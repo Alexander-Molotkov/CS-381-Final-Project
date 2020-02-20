@@ -28,33 +28,40 @@ data Var = Int Name Int
 
 -- Stretch goal: classes
 
+s0 :: State
+s0 = []
+
 run :: Prog -> State -> State
-run (c:cs) s = undefined
+run (c:cs) s = run cs (cmd c s)
+run [] s = s 
 
 cmd :: Cmd -> State -> State
 cmd c s = case c of
     Declare v -> declare v s
     Add v1 v2 -> add v1 v2 s
 
---Goes through stack and gets specific variable by reference
-pullVar :: Name -> State -> Var
+-- Goes through stack and gets specific variable's value by reference
+-- TODO: Make better so we don't have to pattern match against each var type
+pullVar :: Name -> State -> Int -- Should not return int
 pullVar ref (v:vs) = case v of
-   -- TODO: Make better so we don't have to pattern match against each var type
-   Int name val -> if name == ref then v else pullVar name vs
+   Int name val -> if name == ref then val else pullVar name vs
    -- TODO: Wrong var name case
    -- pullVar _ [] = undefined
 
-pushVar :: Name -> State -> State
+-- Changes the value of a variable on the stack
+pushVar :: Name -> a -> State -> State
 pushVar = undefined
 
+--Adds variable to stack
 --This currently doesn't allow for uninitialized values (which feels like a good thing?)
 declare :: Var -> State -> State
-declare = undefined
+declare v s = s ++ [v]
 
 add :: Name -> Name -> State -> State
 add = undefined
 
---prog = [Declare Int "num1" 1, Declare Int "num2" 2, Add "num1" "num2"]
+-- run prog s0
+prog = [Declare (Int "num1" 1), Declare (Int "num2" 4)]
 
 
 
