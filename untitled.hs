@@ -8,7 +8,7 @@ type Prog  = [Cmd]
 type Name  = String
 
 data Cmd = Declare Var
-         | Add Name Name
+         | Add Name Name Name
       -- | Sub Name Name
       -- | Call Function [Var] OR Call Function [Name] (value or reference?)
       -- | TODO: More cmds
@@ -38,31 +38,33 @@ run [] s = s
 cmd :: Cmd -> State -> State
 cmd c s = case c of
     Declare v -> declare v s
-    Add v1 v2 -> add v1 v2 s
+    Add r v1 v2 -> add r v1 v2 s
 
 -- Goes through stack and gets specific variable's value by reference
 -- TODO: Make better so we don't have to pattern match against each var type
-pullVar :: Name -> State -> Int -- Should not return int
-pullVar ref (v:vs) = case v of
-   Int name val -> if name == ref then val else pullVar name vs
+pullVar :: Name -> State -> Int
+pullVar id ((Int idv i):vs) = if id == idv then i else pullVar id vs 
    -- TODO: Wrong var name case
    -- pullVar _ [] = undefined
 
 -- Changes the value of a variable on the stack
 pushVar :: Name -> Int -> State -> State
-pushVar ref i (v:vs) = undefined
+pushVar id i ((Int idv iv):vs) =
+    if id == idv 
+    then [Int id i]   ++ pushVar id i vs
+    else [Int idv iv] ++ pushVar id i vs
    
-
 --Adds variable to stack
 --This currently doesn't allow for uninitialized values (which feels like a good thing?)
+--TODO: No repeat variable names?
 declare :: Var -> State -> State
 declare v s = s ++ [v]
 
-add :: Name -> Name -> State -> State
-add = undefined
+add :: Name -> Name -> Name -> State -> State
+add result a1 a2 s = declare (Int result ((pullVar a1 s) + (pullVar a2 s))) s
 
 -- run prog s0
-prog = [Declare (Int "num1" 1), Declare (Int "num2" 4)]
+prog = [Declare (Int "num1" 1), Declare (Int "num2" 4), Add "sum" "num1" "num2"]
 
 
 
