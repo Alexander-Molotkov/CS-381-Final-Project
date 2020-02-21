@@ -56,12 +56,12 @@ pushVar :: Name -> Var -> State -> State
 pushVar ref i (v:vs) = case v of
     Int name val -> 
         if name == ref 
-        then [i] ++ pushVar ref i (removeVar i vs)
-        else  v   : pushVar ref i (removeVar i vs)
+        then [i] ++ pushVar ref i vs
+        else  v   : pushVar ref i vs
     Bool name val -> 
         if name == ref 
-        then [i] ++ pushVar ref i (removeVar i vs)
-        else  v   : pushVar ref i (removeVar i vs)               
+        then [i] ++ pushVar ref i vs
+        else  v   : pushVar ref i vs                 
 pushVar ref i [] = [i]
 
 -- Removes a variable from scope
