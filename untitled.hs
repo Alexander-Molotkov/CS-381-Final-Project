@@ -16,7 +16,7 @@ data Cmd = Declare Var
 
 -- Var = Name + Value
 data Var = Int Name Int
-      -- | Bool Name Bool
+         | Bool Name Bool
       -- | String Name String
       -- | TODO: More types
     deriving (Eq,Show)
@@ -28,43 +28,64 @@ data Var = Int Name Int
 
 -- Stretch goal: classes
 
-s0 :: State
-s0 = []
-
 run :: Prog -> State -> State
 run (c:cs) s = run cs (cmd c s)
 run [] s = s 
 
 cmd :: Cmd -> State -> State
 cmd c s = case c of
-    Declare v -> declare v s
+    Declare v   -> declare v s
     Add r v1 v2 -> add r v1 v2 s
+    -- Other commands
 
 -- Goes through stack and gets specific variable's value by reference
--- TODO: Make better so we don't have to pattern match against each var type
-pullVar :: Name -> State -> Int
-pullVar id ((Int idv i):vs) = if id == idv then i else pullVar id vs 
-   -- TODO: Wrong var name case
-   -- pullVar _ [] = undefined
+pullVar :: Name -> State -> Var 
+pullVar ref (v:vs) = case v of
+   Int  name val -> if name == ref then v else pullVar ref vs
+   Bool name val -> if name == ref then v else pullVar ref vs
+-- TODO: Variable does not exist case
+pullVar _ [] = undefined
 
 -- Changes the value of a variable on the stack
-pushVar :: Name -> Int -> State -> State
-pushVar id i ((Int idv iv):vs) =
-    if id == idv 
-    then [Int id i]   ++ pushVar id i vs
-    else [Int idv iv] ++ pushVar id i vs
-   
---Adds variable to stack
---This currently doesn't allow for uninitialized values (which feels like a good thing?)
---TODO: No repeat variable names?
+-- Right now you can change types into other types dynamically - Bools can become Ints, etc, this feels bad.
+-- Names can also change - double bad?
+-- Have to think about what restrictions we want on variable manipulation - do we want variables to
+   -- be autodeclared like python if they don't already exist? Or more C-like strict typing?
+pushVar :: Name -> Var -> State -> State
+pushVar ref i (v:vs) = case v of
+    Int name val -> 
+        if name == ref 
+        then [i] ++ pushVar ref i vs
+        else  v   : pushVar ref i vs
+    Bool name val -> 
+        if name == ref 
+        then [i] ++ pushVar ref i vs
+        else  v   : pushVar ref i vs                 
+pushVar ref i [] = [i]
+
+-- TODO: 
+
+-- Adds variable to stack
+-- This currently doesn't allow for uninitialized values (which feels like a good thing?)
+-- TODO: Change value of variables explicitly with declare **(declare and pushVar can be merged)**
 declare :: Var -> State -> State
 declare v s = s ++ [v]
 
 add :: Name -> Name -> Name -> State -> State
-add result a1 a2 s = declare (Int result ((pullVar a1 s) + (pullVar a2 s))) s
+add result a1 a2 s = pushVar result (Int result (x+y)) s
+    where 
+    x = case pullVar a1 s of
+        (Int name v) -> v    
+    y = case pullVar a2 s of
+        (Int name v) -> v
+
+-- Testing 
+-- TODO: Doctests
+s0 :: State
+s0 = []
 
 -- run prog s0
-prog = [Declare (Int "num1" 1), Declare (Int "num2" 4), Add "sum" "num1" "num2"]
+prog = [Declare (Int "num1" 1), Declare (Int "num2" 3), Add "sum" "num1" "num2"]
 
 
 
