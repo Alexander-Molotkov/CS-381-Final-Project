@@ -59,7 +59,7 @@ declare :: Var -> State -> State
 declare v s = s ++ [v]
 
 add :: Name -> Name -> State -> State
-add = undefined
+add = pushVar 
 
 -- run prog s0
 prog = [Declare (Int "num1" 1), Declare (Int "num2" 4)]
