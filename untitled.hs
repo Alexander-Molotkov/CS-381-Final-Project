@@ -53,7 +53,11 @@ pullVar _ [] = undefined
    -- be autodeclared like python if they don't already exist? Or more C-like strict typing?
 -- TODO: Variables should overwite themselves not declare a new variable
 pushVar :: Name -> Var -> State -> State
-pushVar ref i (v:vs) = case v of
+pushVar ref i s = (declareVar ref i (removeVar i s))
+
+declareVar :: Name -> Var -> State -> State
+declareVar ref i (v:vs) = 
+  case v of
     Int name val -> 
         if name == ref 
         then [i] ++ pushVar ref i (removeVar i vs)
@@ -62,7 +66,7 @@ pushVar ref i (v:vs) = case v of
         if name == ref 
         then [i] ++ pushVar ref i (removeVar i vs)
         else  v   : pushVar ref i (removeVar i vs)               
-pushVar ref i [] = [i]
+declareVar ref i [] = [i]
 
 -- Removes a variable from scope
 removeVar :: Var -> State -> State
