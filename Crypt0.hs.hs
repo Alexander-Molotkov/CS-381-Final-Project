@@ -1,15 +1,16 @@
 module Crypt0 where
 
+import Data.Map 
+
 -- State of program is the value of all of the variables
--- Semantic domain (?): [Var] -> [Var] = State -> State
--- Stretch goal: pointers - reference variable by location in State
+-- Semantic domain = State -> State
 
 -- TODO (Feb 27th)
 --    - CMDs: Sub, Call, If, While/For
 --    - VARs: Int, Bool, String, (Maybe float)
 --    - Features: Start on static typing, 
 
-type State = [Var] 
+type State = Map Name Var
 type Prog  = [Cmd]
 type Name  = String
 
@@ -21,16 +22,14 @@ data Cmd = Declare Name Var
     deriving (Eq,Show)
 
 -- Var = Name + Value
-data Var = Int Name Int
-         | Bool Name Bool
-      -- | String Name String
+data Var = Int Int
+         | Bool Bool
+      -- | String String
       -- | TODO: More types
     deriving (Eq,Show)
 
 -- TODO: Function = String (name of function) -> [String OR Var] (variables) -> Prog (code) -> State -> State
 -- Based on other parts of the code, it seems like we only want to pass by reference. Function scope may be hard
--- Have to decide if we want to allow function calls with no arguments
--- If we do this early we can probably implement all of our cmds as functions
 
 -- Stretch goal: classes
 
@@ -40,60 +39,41 @@ run [] s = s
 
 cmd :: Cmd -> State -> State
 cmd c s = case c of
-    Declare ref v   -> set ref v s
+    Declare ref v  -> set ref v s
     Add r v1 v2 -> add r v1 v2 s
     -- Other commands
 
 -- Goes through stack and gets specific variable's value by reference
 get :: Name -> State -> Var 
-get ref (v:vs) = case v of
-   Int  name val -> if name == ref then v else get ref vs
-   Bool name val -> if name == ref then v else get ref vs
+get key s = s ! key
 -- TODO: Variable does not exist case
-get _ [] = undefined
 
 -- Changes the value of a variable on the stack
--- Right now you can change types into other types dynamically - Bools can become Ints, etc, this feels bad.
--- Names can also change - double bad?
 -- Have to think about what restrictions we want on variable manipulation - do we want variables to-
    -- be autodeclared like python if they don't already exist? Or more C-like strict typing?
 set :: Name -> Var -> State -> State
-set ref i s = (declareVar ref i (removeVar i s))
-
-declareVar :: Name -> Var -> State -> State
-declareVar ref i (v:vs) = 
-  case v of
-    Int name val -> 
-        if name == ref 
-        then [i] ++ set ref i (removeVar i vs)
-        else  v   : set ref i (removeVar i vs)
-    Bool name val -> 
-        if name == ref 
-        then [i] ++ set ref i (removeVar i vs)
-        else  v   : set ref i (removeVar i vs)               
-declareVar ref i [] = [i]
+set key v s = (insert key v s)
 
 -- Removes a variable from scope
-removeVar :: Var -> State -> State
-removeVar i (v:vs) =
-  if i == v 
-  then []  ++ removeVar i vs
-  else [v] ++ removeVar i vs
-removeVar i [] = []
+removeVar :: Name -> State -> State
+removeVar key s = delete key s
 
 -- Adds together two variables
+-- TODO: Type checking
 add :: Name -> Name -> Name -> State -> State
-add result a1 a2 s = declareVar result (Int result (x+y)) s
-    where 
-    x = case get a1 s of
-        (Int name v) -> v    
-    y = case get a2 s of
-        (Int name v) -> v
+add result a1 a2 s = set result (Int (x + y)) s
+    where
+      x = case get a1 s of
+        Int v -> v
+        ----
+      y = case get a2 s of
+        Int v -> v
+        ----
 
 -- Testing 
 -- TODO: Doctests
 s0 :: State
-s0 = []
+s0 = empty
 
--- run prog s0
-prog = [Declare "num1" (Int "num1" 1), Declare "num2" (Int "num2" 3), Add "sum" "num1" "num2"]
+--run prog s0
+prog = [Declare "num1" (Int 1), Declare "num2" (Int 3), Add "sum" "num1" "num2"]
