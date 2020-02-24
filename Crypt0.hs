@@ -16,16 +16,16 @@ type Name  = String
 
 data Cmd = Declare Name Var
          | Add Name Name Name
-      -- | Sub Name Name
-      -- | Call Function [Var] OR Call Function [Name] (value or reference?)
-      -- | TODO: More cmds
+      --  Sub Name Name
+      --  Call Function [Var] OR Call Function [Name] (value or reference?)
+      --  TODO: More cmds
     deriving (Eq,Show)
 
 -- Var = Name + Value
 data Var = Int Int
          | Bool Bool
-      -- | String String
-      -- | TODO: More types
+         | String String
+      --  TODO: More types
     deriving (Eq,Show)
 
 -- TODO: Function = String (name of function) -> [String OR Var] (variables) -> Prog (code) -> State -> State
@@ -37,10 +37,26 @@ run :: Prog -> State -> State
 run (c:cs) s = run cs (cmd c s)
 run [] s = s 
 
+-- | Run commands
+--
+-- Type error checking:
+--
+-- >>> s  = cmd (Declare "String" (String "s")) s0
+-- >>> s' = cmd (Declare "Int" (Int 10 )) s
+-- >>> cmd (Add "Result" "String" "Int") s'
+-- Error
+
 cmd :: Cmd -> State -> State
 cmd c s = case c of
     Declare ref v  -> set ref v s
-    Add r v1 v2 -> add r v1 v2 s
+    Add r v1 v2 -> 
+        if (typeOf v1 s) == (typeOf v2 s)
+        then case typeOf v1 s of 
+            "Int"  -> addInt r v1 v2 s 
+            "Str"  -> addStr r v1 v2 s
+            "Bool" -> error "Invalid type 'Bool' in call to add"
+        else error "Mismatched types in call to add"
+                   
     -- Other commands
 
 -- Goes through stack and gets specific variable's value by reference
@@ -54,21 +70,29 @@ get key s = s ! key
 set :: Name -> Var -> State -> State
 set key v s = (insert key v s)
 
+-- Returns type of a variable
+typeOf :: Name -> State -> String
+typeOf key s = case get key s of 
+    (Int _)    -> "Int"
+    (Bool _)   -> "Bool"
+    (String _) -> "Str"
+
 -- Removes a variable from scope
 removeVar :: Name -> State -> State
 removeVar key s = delete key s
 
 -- Adds together two variables
 -- TODO: Type checking
-add :: Name -> Name -> Name -> State -> State
-add result a1 a2 s = set result (Int (x + y)) s
+addInt :: Name -> Name -> Name -> State -> State
+addInt result a1 a2 s = set result (Int (x + y)) s
     where
       x = case get a1 s of
         Int v -> v
-        ----
       y = case get a2 s of
         Int v -> v
-        ----
+
+addStr :: Name -> Name -> Name -> State -> State
+addStr result a1 a2 s = undefined
 
 -- Testing 
 -- TODO: Doctests
