@@ -3,11 +3,10 @@ module Crypt0 where
 import Data.Map 
 
 -- State of program is the value of all of the variables
--- Semantic domain = State -> State
+-- Semantic domain = State -> State = (Map Name Var) -> (Map Name Var)
 
 -- TODO (Feb 27th)
---    - CMDs: Sub, Call, If, While/For
---    - VARs: Int, Bool, String, (Maybe float)
+--    - CMDs: Call, While/For
 --    - Features: Start on static typing, 
 
 -- TYPE DECLARATIONS
@@ -22,7 +21,7 @@ data Cmd = Declare Name Var
          | Mul Name Name Name
          | Div Name Name Name
          | If Name Cmd Cmd
-      --  Call Function [Var] OR Call Function [Name] (value or reference?)
+         | Call Name [Name]
       --  TODO: More cmds
     deriving (Eq,Show)
 
@@ -31,8 +30,7 @@ data Var = Int Int
          | Double Double
          | Bool Bool
          | String String
-      --  Function Prog [Name]
-      --  TODO: More types
+         | Function Prog [Name]
     deriving (Eq,Show)
 
 data Op = Plus | Minus | Mult | Divi
@@ -43,7 +41,9 @@ data Op = Plus | Minus | Mult | Divi
 
 -- Stretch goal: classes
 
+--
 -- SEMANTICS
+--
 
 run :: Prog -> State -> State
 run (c:cs) s = run cs (cmd c s)
@@ -81,18 +81,19 @@ cmd c s = case c of
         otherwise -> error ("Invalid variable type passed to 'Add': " ++ typeOf v1 s)    
     -- If statement
     If b c1 c2    -> 
-        if (case get b s of
-              Bool v -> v)
+        if (valBool b s)
         then cmd c1 s
         else cmd c2 s
+    -- Call a function
+    Call f names  -> call (get f s) names s
     -- Other commands
 
--- | Goes through stack and gets specific variable's value by reference
 --
--- >>> s1 = set "var" (Int 3) s0
--- >>> get "var" s1
--- Int 3
+-- FUNCTIONS
 --
+
+call :: Var -> [Name] -> State -> State
+call = undefined
 
 --
 -- MATH OPERATIONS
@@ -135,6 +136,11 @@ valStr v s =
     case get v s of
       String x -> x
 
+valBool :: Name -> State -> Bool
+valBool v s = 
+    case get v s of
+      Bool x -> x
+
 --
 -- VARIABLE MANIPULATION
 --
@@ -163,7 +169,7 @@ removeVar key s = delete key s
 
 -- TESTING
 
--- | Adds together two vars
+-- | Add together two vars
 --
 -- >>> prog = [Declare "num1" (Int 5), Declare "num2" (Int 15), Add "sum" "num1" "num2"]
 -- >>> s1 = run prog s0 
@@ -175,15 +181,14 @@ removeVar key s = delete key s
 -- >>> get "sum" s1
 -- Double 11.799999999999999
 --
--- NOTE: We may want to take a look at why double addition works like this,
--- could be something that we just have to deal with.
+-- NOTE: We deal with the same inherent issues with floating point arithmetic as languages like Python
 --
 -- >>> prog = [Declare "str1" (String "asd"), Declare "str2" (String "123"), Add "str3" "str1" "str2"]
 -- >>> s1 = run prog s0
 -- >>> get "str3" s1
 -- String "asd123"
 --
--- | Subtracts two vars
+-- | Subtract two vars
 --
 -- >>> prog = [Declare "num1" (Int 5), Declare "num2" (Int 15), Sub "sum" "num1" "num2"]
 -- >>> s1 = run prog s0 
@@ -207,7 +212,7 @@ removeVar key s = delete key s
 -- >>> get "sum" s1
 -- Double 16.4
 --
--- | Divides two vars
+-- | Divide two vars
 --
 -- >>> prog = [Declare "num1" (Int 30), Declare "num2" (Int 15), Div "sum" "num1" "num2"]
 -- >>> s1 = run prog s0 
@@ -218,6 +223,18 @@ removeVar key s = delete key s
 -- >>> s1 = run prog s0
 -- >>> get "sum" s1
 -- Double 4.1
+--
+-- | If statement
+--
+-- >>> prog1 = [Declare "bool1" (Bool True), If "bool1" (Declare "true" (Int 1)) (Declare "false" (Int 0))]
+-- >>> s1 = run prog1 s0
+-- >>> get "true" s1
+-- Int 1
+--
+-- >>> prog1 = [Declare "bool1" (Bool False), If "bool1" (Declare "true" (Int 1)) (Declare "false" (Int 0))]
+-- >>> s1 = run prog1 s0
+-- >>> get "false" s1
+-- Int 0
 --
 
 s0 :: State
