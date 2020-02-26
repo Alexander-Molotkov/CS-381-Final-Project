@@ -30,7 +30,7 @@ data Var = Int Int
          | Double Double
          | Bool Bool
          | String String
-         | Function Prog [Name]
+         | Function [Name] Prog
     deriving (Eq,Show)
 
 data Op = Plus | Minus | Mult | Divi
@@ -88,12 +88,6 @@ cmd c s = case c of
     Call f names  -> call (get f s) names s
     -- Other commands
 
---
--- FUNCTIONS
---
-
-call :: Var -> [Name] -> State -> State
-call = undefined
 
 --
 -- MATH OPERATIONS
@@ -240,6 +234,14 @@ removeVar key s = delete key s
 s0 :: State
 s0 = empty
 
+--
+-- FUNCTIONS
+--
+
+call :: Var -> [Name] -> State -> State
+call = undefined
+
 --run prog s0
 prog = [Declare "num1" (Double 8.2), Declare "num2" (Double 3.3), Add "sum" "num1" "num2"]
 prog1 = [Declare "bool1" (Bool True), If "bool1" (Declare "true" (Int 1)) (Declare "false" (Int 0))]
+prog2 = [Declare "f" (Function ["num1", "num2"] [Add "sum" "num1" "num2"])]
