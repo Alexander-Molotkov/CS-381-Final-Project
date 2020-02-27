@@ -9,24 +9,30 @@ import Data.Map
 --    - CMDs: Call, While/For
 --    - Features: Start on static typing, 
 
+--
 -- TYPE DECLARATIONS
+--
 
 type State = Map Name Var
 type Prog  = [Cmd]
 type Name  = String
 
-data Cmd = Declare Name Var
-         | Add Name Name Name
-         | Sub Name Name Name
-         | Mul Name Name Name
-         | Div Name Name Name
+data Cmd = Declare Name Expr
          | If Name Cmd Cmd
-         | Call Name [Name]
          | Return Name 
-      --  TODO: More cmds
     deriving (Eq,Show)
 
--- Var = Name + Value
+data Expr = Add Name Name
+          | Sub Name Name
+          | Mul Name Name
+          | Div Name Name
+          | Call Name [Name]
+          -- LessThan name name
+          -- GreaterThan name name
+          -- Equals name name
+          | Var
+    deriving (Eq,Show)
+
 data Var = Int Int
          | Double Double
          | Bool Bool
@@ -37,12 +43,9 @@ data Var = Int Int
 data Op = Plus | Minus | Mult | Divi
     deriving (Eq,Show)
 
--- Int | Double | Bool | String | Function
+--            Int  | Double |  Bool  | String | Function
 data Type = Int_ty | Dbl_ty | Bul_ty | Str_ty | Fun_ty
     deriving (Eq,Show)
-
--- TODO: Function = String (name of function) -> [String OR Var] (variables) -> Prog (code) -> State -> State
--- Based on other parts of the code, it seems like we only want to pass by reference. Function scope may be hard
 
 -- Stretch goal: classes
 
@@ -57,44 +60,44 @@ run [] s = s
 cmd :: Cmd -> State -> State
 cmd c s = case c of
     -- Variable declaration
-    Declare ref v -> set ref v s
-    -- Addition
-    Add r v1 v2   -> 
-      case typeOf v1 s of
-        Int_ty    -> set r (Int (performOpInt Plus (valInt v1 s) (valInt v2 s) )) s
-        Dbl_ty    -> set r (Double (performOpDbl Plus (valDbl v1 s) (valDbl v2 s))) s
-        Str_ty    -> set r (String (performOpStr Plus (valStr v1 s) (valStr v2 s))) s
-        otherwise -> error ("Invalid variable type passed to 'Add': " ++ show (typeOf v1 s))
-    -- Subtraction
-    Sub r v1 v2   ->
-      case typeOf v1 s of
-        Int_ty    -> set r (Int (performOpInt Minus (valInt v1 s) (valInt v2 s))) s
-        Dbl_ty     -> set r (Double (performOpDbl Minus (valDbl v1 s) (valDbl v2 s))) s
-        -- TODO: "Str"     -> set r (String (performOpStr (valStr v1 s) (valStr v2 s) Minus)) s
-        otherwise -> error ("Invalid variable type passed to 'Sub': " ++ show (typeOf v1 s)) 
-    -- Multiplication
-    Mul r v1 v2   ->
-      case typeOf v1 s of
-        Int_ty    -> set r (Int (performOpInt Mult (valInt v1 s) (valInt v2 s))) s
-        Dbl_ty     -> set r (Double (performOpDbl Mult (valDbl v1 s) (valDbl v2 s))) s
-        otherwise -> error ("Invalid variable type passed to 'Add': " ++ show (typeOf v1 s))    
-    -- Division
-    Div r v1 v2   ->
-      case typeOf v1 s of
-        Int_ty     -> set r (Int (performOpInt Divi (valInt v1 s) (valInt v2 s))) s
-        Dbl_ty     -> set r (Double (performOpDbl Divi (valDbl v1 s) (valDbl v2 s))) s
-        otherwise -> error ("Invalid variable type passed to 'Add': " ++ show (typeOf v1 s))    
+    Declare ref e -> set ref (expr e s) s
     -- If statement
     If b c1 c2    -> 
         if (valBool b s)
         then cmd c1 s
         else cmd c2 s
-    -- Other commands
 
 expr :: Expr -> State -> Var
+expr e s = case e of
+    Add v1 v2   -> 
+    -- Addition
+      case typeOf v1 s of
+        Int_ty    -> Int (performOpInt Plus (valInt v1 s) (valInt v2 s)) 
+        Dbl_ty    -> Double (performOpDbl Plus (valDbl v1 s) (valDbl v2 s)) 
+        Str_ty    -> String (performOpStr Plus (valStr v1 s) (valStr v2 s)) 
+        otherwise -> error ("Invalid variable type passed to 'Add': " ++ show (typeOf v1 s))
+    -- Subtraction
+    Sub v1 v2   ->
+      case typeOf v1 s of
+        Int_ty    -> Int (performOpInt Minus (valInt v1 s) (valInt v2 s)) 
+        Dbl_ty    -> Double (performOpDbl Minus (valDbl v1 s) (valDbl v2 s)) 
+        -- TODO: "Str"     -> set r (String (performOpStr (valStr v1 s) (valStr v2 s) Minus)) s
+        otherwise -> error ("Invalid variable type passed to 'Sub': " ++ show (typeOf v1 s)) 
+    -- Multiplication
+    Mul v1 v2   ->
+      case typeOf v1 s of
+        Int_ty    -> Int (performOpInt Mult (valInt v1 s) (valInt v2 s)) 
+        Dbl_ty    -> Double (performOpDbl Mult (valDbl v1 s) (valDbl v2 s)) 
+        otherwise -> error ("Invalid variable type passed to 'Add': " ++ show (typeOf v1 s))    
+    -- Division
+    Div v1 v2   ->
+      case typeOf v1 s of
+        Int_ty    -> Int (performOpInt Divi (valInt v1 s) (valInt v2 s)) 
+        Dbl_ty    -> Double (performOpDbl Divi (valDbl v1 s) (valDbl v2 s)) 
+        otherwise -> error ("Invalid variable type passed to 'Add': " ++ show (typeOf v1 s))    
 
 --
--- MATH OPERATIONS
+-- EXPRESSIONS
 --
 
 performOpInt :: Op -> Int -> Int -> Int
@@ -143,13 +146,12 @@ valBool v s =
 -- VARIABLE MANIPULATION
 --
 
+
 get :: Name -> State -> Var 
 get key s = s ! key
 -- TODO: Variable does not exist case
 
 -- Changes the value of a variable on the stack
--- Have to think about what restrictions we want on variable manipulation - do we want variables to-
-   -- be autodeclared like python if they don't already exist? Or more C-like strict typing?
 set :: Name -> Var -> State -> State
 set key v s = (insert key v s)
 
@@ -169,74 +171,16 @@ removeVar key s = delete key s
 
 -- | Add together two vars
 --
--- >>> prog = [Declare "num1" (Int 5), Declare "num2" (Int 15), Add "sum" "num1" "num2"]
--- >>> s1 = run prog s0 
--- >>> get "sum" s1
--- Int 20
---
--- >>> prog = [Declare "num1" (Double 8.20), Declare "num2" (Double 3.60), Add "sum" "num1" "num2"]
--- >>> s1 = run prog s0
--- >>> get "sum" s1
--- Double 11.799999999999999
---
 -- NOTE: We deal with the same inherent issues with floating point arithmetic as languages like Python
---
--- >>> prog = [Declare "str1" (String "asd"), Declare "str2" (String "123"), Add "str3" "str1" "str2"]
--- >>> s1 = run prog s0
--- >>> get "str3" s1
--- String "asd123"
 --
 -- | Subtract two vars
 --
--- >>> prog = [Declare "num1" (Int 5), Declare "num2" (Int 15), Sub "sum" "num1" "num2"]
--- >>> s1 = run prog s0 
--- >>> get "sum" s1
--- Int (-10)
---
--- >>> prog = [Declare "num1" (Double 8.20), Declare "num2" (Double 3.60), Sub "sum" "num1" "num2"]
--- >>> s1 = run prog s0
--- >>> get "sum" s1
--- Double 4.6
---
 -- | Multiplies two vars
---
--- >>> prog = [Declare "num1" (Int 2), Declare "num2" (Int 15), Mul "sum" "num1" "num2"]
--- >>> s1 = run prog s0 
--- >>> get "sum" s1
--- Int 30
---
--- >>> prog = [Declare "num1" (Double 8.20), Declare "num2" (Double 2.0), Mul "sum" "num1" "num2"]
--- >>> s1 = run prog s0
--- >>> get "sum" s1
--- Double 16.4
 --
 -- | Divide two vars
 --
--- >>> prog = [Declare "num1" (Int 30), Declare "num2" (Int 15), Div "sum" "num1" "num2"]
--- >>> s1 = run prog s0 
--- >>> get "sum" s1
--- Int 2
---
--- >>> prog = [Declare "num1" (Double 8.20), Declare "num2" (Double 2.0), Div "sum" "num1" "num2"]
--- >>> s1 = run prog s0
--- >>> get "sum" s1
--- Double 4.1
---
 -- | If statement
---
--- >>> prog1 = [Declare "bool1" (Bool True), If "bool1" (Declare "true" (Int 1)) (Declare "false" (Int 0))]
--- >>> s1 = run prog1 s0
--- >>> get "true" s1
--- Int 1
---
--- >>> prog1 = [Declare "bool1" (Bool False), If "bool1" (Declare "true" (Int 1)) (Declare "false" (Int 0))]
--- >>> s1 = run prog1 s0
--- >>> get "false" s1
--- Int 0
---
 
-s0 :: State
-s0 = empty
 
 --
 -- FUNCTIONS
@@ -256,7 +200,8 @@ s0 = empty
 -- Int | Double | Bool | String | Function
 -- data Type = Int_ty | Dbl_ty | Bul_ty | Str_ty | Fun_ty
 
+s0 :: State
+s0 = empty
+
 --run prog s0
-prog = [Declare "num1" (Double 8.2), Declare "num2" (Double 3.3), Add "sum" "num1" "num2"]
-prog1 = [Declare "bool1" (Bool True), If "bool1" (Declare "true" (Int 1)) (Declare "false" (Int 0))]
-prog2 = [Declare "f" (Function Int_ty [(Int_ty, "num1"), (Int_ty, "num2")] [Add "sum" "num1" "num2"])]
+prog = [Declare "v1" (Int 23), Declare "v2" (Int 56)]
