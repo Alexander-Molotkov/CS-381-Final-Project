@@ -8,6 +8,8 @@ Team Members:
 	Connor Wilson
 
 Runtime instructions:
-	Automatic language testing: doctest crypto.hs
-	Manual running of programs: run <YourProgram> <State>
-		NOTE: s0 is the empty state
+
+Automatic language testing: doctest crypto.hs
+	
+Manual running of programs: run <YourProgram> <State>
+NOTE: s0 is the empty state
