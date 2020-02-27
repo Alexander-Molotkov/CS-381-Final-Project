@@ -22,6 +22,7 @@ data Cmd = Declare Name Var
          | Div Name Name Name
          | If Name Cmd Cmd
          | Call Name [Name]
+         | Return Name 
       --  TODO: More cmds
     deriving (Eq,Show)
 
@@ -30,10 +31,14 @@ data Var = Int Int
          | Double Double
          | Bool Bool
          | String String
-         | Function [Name] Prog
+         | Function Type [(Type, Name)] Prog
     deriving (Eq,Show)
 
 data Op = Plus | Minus | Mult | Divi
+    deriving (Eq,Show)
+
+-- Int | Double | Bool | String | Function
+data Type = Int_ty | Dbl_ty | Bul_ty | Str_ty | Fun_ty
     deriving (Eq,Show)
 
 -- TODO: Function = String (name of function) -> [String OR Var] (variables) -> Prog (code) -> State -> State
@@ -56,45 +61,44 @@ cmd c s = case c of
     -- Addition
     Add r v1 v2   -> 
       case typeOf v1 s of
-        "Int"     -> set r (Int (performOpInt (valInt v1 s) (valInt v2 s) Plus)) s
-        "Dbl"     -> set r (Double (performOpDbl (valDbl v1 s) (valDbl v2 s) Plus)) s
-        "Str"     -> set r (String (performOpStr (valStr v1 s) (valStr v2 s) Plus)) s
-        otherwise -> error ("Invalid variable type passed to 'Add': " ++ typeOf v1 s) 
+        Int_ty    -> set r (Int (performOpInt Plus (valInt v1 s) (valInt v2 s) )) s
+        Dbl_ty    -> set r (Double (performOpDbl Plus (valDbl v1 s) (valDbl v2 s))) s
+        Str_ty    -> set r (String (performOpStr Plus (valStr v1 s) (valStr v2 s))) s
+        otherwise -> error ("Invalid variable type passed to 'Add': " ++ show (typeOf v1 s))
     -- Subtraction
     Sub r v1 v2   ->
       case typeOf v1 s of
-        "Int"     -> set r (Int (performOpInt (valInt v1 s) (valInt v2 s) Minus)) s
-        "Dbl"     -> set r (Double (performOpDbl (valDbl v1 s) (valDbl v2 s) Minus)) s
+        Int_ty    -> set r (Int (performOpInt Minus (valInt v1 s) (valInt v2 s))) s
+        Dbl_ty     -> set r (Double (performOpDbl Minus (valDbl v1 s) (valDbl v2 s))) s
         -- TODO: "Str"     -> set r (String (performOpStr (valStr v1 s) (valStr v2 s) Minus)) s
-        otherwise -> error ("Invalid variable type passed to 'Sub': " ++ typeOf v1 s) 
+        otherwise -> error ("Invalid variable type passed to 'Sub': " ++ show (typeOf v1 s)) 
     -- Multiplication
     Mul r v1 v2   ->
       case typeOf v1 s of
-        "Int"     -> set r (Int (performOpInt (valInt v1 s) (valInt v2 s) Mult)) s
-        "Dbl"     -> set r (Double (performOpDbl (valDbl v1 s) (valDbl v2 s) Mult)) s
-        otherwise -> error ("Invalid variable type passed to 'Add': " ++ typeOf v1 s)    
+        Int_ty    -> set r (Int (performOpInt Mult (valInt v1 s) (valInt v2 s))) s
+        Dbl_ty     -> set r (Double (performOpDbl Mult (valDbl v1 s) (valDbl v2 s))) s
+        otherwise -> error ("Invalid variable type passed to 'Add': " ++ show (typeOf v1 s))    
     -- Division
     Div r v1 v2   ->
       case typeOf v1 s of
-        "Int"     -> set r (Int (performOpInt (valInt v1 s) (valInt v2 s) Divi)) s
-        "Dbl"     -> set r (Double (performOpDbl (valDbl v1 s) (valDbl v2 s) Divi)) s
-        otherwise -> error ("Invalid variable type passed to 'Add': " ++ typeOf v1 s)    
+        Int_ty     -> set r (Int (performOpInt Divi (valInt v1 s) (valInt v2 s))) s
+        Dbl_ty     -> set r (Double (performOpDbl Divi (valDbl v1 s) (valDbl v2 s))) s
+        otherwise -> error ("Invalid variable type passed to 'Add': " ++ show (typeOf v1 s))    
     -- If statement
     If b c1 c2    -> 
         if (valBool b s)
         then cmd c1 s
         else cmd c2 s
-    -- Call a function
-    Call f names  -> call (get f s) names s
     -- Other commands
 
+expr :: Expr -> State -> Var
 
 --
 -- MATH OPERATIONS
 --
 
-performOpInt :: Int -> Int -> Op -> Int
-performOpInt x y o = 
+performOpInt :: Op -> Int -> Int -> Int
+performOpInt o x y = 
     case o of
       Plus  -> x + y
       Minus -> x - y
@@ -106,8 +110,8 @@ valInt v s =
     case get v s of
       Int x -> x
 
-performOpDbl :: Double -> Double -> Op -> Double
-performOpDbl x y o = 
+performOpDbl :: Op -> Double -> Double -> Double
+performOpDbl o x y = 
     case o of
       Plus  -> x + y
       Minus -> x - y
@@ -119,8 +123,8 @@ valDbl v s =
     case get v s of
       Double x -> x
 
-performOpStr :: String -> String -> Op -> String
-performOpStr x y o = 
+performOpStr :: Op -> String -> String -> String
+performOpStr o x y = 
     case o of
       Plus  -> x ++ y
       --TODO: Minus -> x - y
@@ -150,12 +154,12 @@ set :: Name -> Var -> State -> State
 set key v s = (insert key v s)
 
 -- Returns type of a variable
-typeOf :: Name -> State -> String
+typeOf :: Name -> State -> Type
 typeOf key s = case get key s of 
-    (Int _)    -> "Int"
-    (Double _) -> "Dbl"
-    (Bool _)   -> "Bool"
-    (String _) -> "Str"
+    (Int _)    -> Int_ty
+    (Double _) -> Dbl_ty
+    (Bool _)   -> Bul_ty
+    (String _) -> Str_ty
 
 -- Removes a variable from scope
 removeVar :: Name -> State -> State
@@ -238,10 +242,21 @@ s0 = empty
 -- FUNCTIONS
 --
 
-call :: Var -> [Name] -> State -> State
-call = undefined
+-- Function [(Type, Name)] Prog
+-- data Op = Plus | Minus | Mult | Divi
+
+--call :: Var -> State -> Var
+--call t  s = case t of
+--    Int_ty -> undefined
+--    Dbl_ty -> undefined
+--    Bul_ty -> undefined
+--   Str_ty -> undefined
+--    Fun_ty -> undefined
+
+-- Int | Double | Bool | String | Function
+-- data Type = Int_ty | Dbl_ty | Bul_ty | Str_ty | Fun_ty
 
 --run prog s0
 prog = [Declare "num1" (Double 8.2), Declare "num2" (Double 3.3), Add "sum" "num1" "num2"]
 prog1 = [Declare "bool1" (Bool True), If "bool1" (Declare "true" (Int 1)) (Declare "false" (Int 0))]
-prog2 = [Declare "f" (Function ["num1", "num2"] [Add "sum" "num1" "num2"])]
+prog2 = [Declare "f" (Function Int_ty [(Int_ty, "num1"), (Int_ty, "num2")] [Add "sum" "num1" "num2"])]
