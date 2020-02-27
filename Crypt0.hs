@@ -18,19 +18,21 @@ type Prog  = [Cmd]
 type Name  = String
 
 data Cmd = Declare Name Expr
+         -- TODO: Decide if we want to change If to: If Expr Cmd Cmd to fit with other cmds.
          | If Name Cmd Cmd
          | Return Name 
     deriving (Eq,Show)
 
-data Expr = Add Name Name
-          | Sub Name Name
-          | Mul Name Name
-          | Div Name Name
+data Expr = Add Expr Expr
+          | Sub Expr Expr
+          | Mul Expr Expr
+          | Div Expr Expr
           | Call Name [Name]
-          -- LessThan name name
-          -- GreaterThan name name
-          -- Equals name name
-          | Var
+          -- TODO: LessThan name name
+          -- TODO: GreaterThan name name
+          -- TODO: Equals name name
+          | Const Var
+          | Get Name
     deriving (Eq,Show)
 
 data Var = Int Int
@@ -46,8 +48,6 @@ data Op = Plus | Minus | Mult | Divi
 --            Int  | Double |  Bool  | String | Function
 data Type = Int_ty | Dbl_ty | Bul_ty | Str_ty | Fun_ty
     deriving (Eq,Show)
-
--- Stretch goal: classes
 
 --
 -- SEMANTICS
@@ -69,36 +69,44 @@ cmd c s = case c of
 
 expr :: Expr -> State -> Var
 expr e s = case e of
-    Add v1 v2   -> 
     -- Addition
-      case typeOf v1 s of
-        Int_ty    -> Int (performOpInt Plus (valInt v1 s) (valInt v2 s)) 
-        Dbl_ty    -> Double (performOpDbl Plus (valDbl v1 s) (valDbl v2 s)) 
-        Str_ty    -> String (performOpStr Plus (valStr v1 s) (valStr v2 s)) 
-        otherwise -> error ("Invalid variable type passed to 'Add': " ++ show (typeOf v1 s))
+    Add e1 e2 -> if isConst e1 && isConst e2 
+        then case e1 of 
+            Const (Int _)    -> Int (performOpInt Plus (valInt e1) (valInt e2))
+            Const (Double _) -> Double (performOpDbl Plus (valDbl e1) (valDbl e2))
+            Const (String _) -> String (performOpStr Plus (valStr e1) (valStr e2))
+        else expr (Add (Const (expr e1 s)) (Const (expr e2 s))) s
     -- Subtraction
-    Sub v1 v2   ->
-      case typeOf v1 s of
-        Int_ty    -> Int (performOpInt Minus (valInt v1 s) (valInt v2 s)) 
-        Dbl_ty    -> Double (performOpDbl Minus (valDbl v1 s) (valDbl v2 s)) 
-        -- TODO: "Str"     -> set r (String (performOpStr (valStr v1 s) (valStr v2 s) Minus)) s
-        otherwise -> error ("Invalid variable type passed to 'Sub': " ++ show (typeOf v1 s)) 
+    Sub e1 e2 -> if isConst e1 && isConst e2 
+        then case e1 of 
+            Const (Int _)    -> Int (performOpInt Minus (valInt e1) (valInt e2))
+            Const (Double _) -> Double (performOpDbl Minus (valDbl e1) (valDbl e2))
+         -- TODO: "Str"     -> set r (String (performOpStr (valStr v1 s) (valStr v2 s) Minus)) s
+        else expr (Sub (Const (expr e1 s)) (Const (expr e2 s))) s
     -- Multiplication
-    Mul v1 v2   ->
-      case typeOf v1 s of
-        Int_ty    -> Int (performOpInt Mult (valInt v1 s) (valInt v2 s)) 
-        Dbl_ty    -> Double (performOpDbl Mult (valDbl v1 s) (valDbl v2 s)) 
-        otherwise -> error ("Invalid variable type passed to 'Add': " ++ show (typeOf v1 s))    
+    Mul e1 e2 -> if isConst e1 && isConst e2 
+        then case e1 of 
+            Const (Int _)    -> Int (performOpInt Mult (valInt e1) (valInt e2))
+            Const (Double _) -> Double (performOpDbl Mult (valDbl e1) (valDbl e2))
+        else expr (Mul (Const (expr e1 s)) (Const (expr e2 s))) s
     -- Division
-    Div v1 v2   ->
-      case typeOf v1 s of
-        Int_ty    -> Int (performOpInt Divi (valInt v1 s) (valInt v2 s)) 
-        Dbl_ty    -> Double (performOpDbl Divi (valDbl v1 s) (valDbl v2 s)) 
-        otherwise -> error ("Invalid variable type passed to 'Add': " ++ show (typeOf v1 s))    
+    Div e1 e2 -> if isConst e1 && isConst e2 
+        then case e1 of 
+            Const (Int _)    -> Int (performOpInt Divi (valInt e1) (valInt e2))
+            Const (Double _) -> Double (performOpDbl Divi (valDbl e1) (valDbl e2))
+        else expr (Div (Const (expr e1 s)) (Const (expr e2 s))) s
+    -- Constant
+    Const v   -> v
+    -- Get existing variable
+    Get ref   -> get ref s
 
 --
--- EXPRESSIONS
+-- EXPRESSION HELPER FUNCTIONS
 --
+
+isConst :: Expr -> Bool
+isConst (Const _) = True
+isConst _         = False
 
 performOpInt :: Op -> Int -> Int -> Int
 performOpInt o x y = 
@@ -108,10 +116,8 @@ performOpInt o x y =
       Mult  -> x * y
       Divi  -> x `div` y
 
-valInt :: Name -> State -> Int
-valInt v s = 
-    case get v s of
-      Int x -> x
+valInt :: Expr -> Int
+valInt (Const (Int x)) = x
 
 performOpDbl :: Op -> Double -> Double -> Double
 performOpDbl o x y = 
@@ -121,10 +127,8 @@ performOpDbl o x y =
       Mult  -> x * y
       Divi  -> x / y
 
-valDbl :: Name -> State -> Double
-valDbl v s = 
-    case get v s of
-      Double x -> x
+valDbl :: Expr -> Double
+valDbl (Const (Double x)) = x
 
 performOpStr :: Op -> String -> String -> String
 performOpStr o x y = 
@@ -132,10 +136,8 @@ performOpStr o x y =
       Plus  -> x ++ y
       --TODO: Minus -> x - y
 
-valStr :: Name -> State -> String
-valStr v s = 
-    case get v s of
-      String x -> x
+valStr :: Expr -> String
+valStr (Const (String x)) = x
 
 valBool :: Name -> State -> Bool
 valBool v s = 
@@ -156,12 +158,11 @@ set :: Name -> Var -> State -> State
 set key v s = (insert key v s)
 
 -- Returns type of a variable
-typeOf :: Name -> State -> Type
-typeOf key s = case get key s of 
-    (Int _)    -> Int_ty
-    (Double _) -> Dbl_ty
-    (Bool _)   -> Bul_ty
-    (String _) -> Str_ty
+typeOf :: Var -> State -> Type
+typeOf (Int _) s    = Int_ty
+typeOf (Bool _) s   = Bul_ty
+typeOf (Double _) s = Dbl_ty
+typeOf (String _) s = Str_ty
 
 -- Removes a variable from scope
 removeVar :: Name -> State -> State
@@ -171,7 +172,6 @@ removeVar key s = delete key s
 
 -- | Add together two vars
 --
--- NOTE: We deal with the same inherent issues with floating point arithmetic as languages like Python
 --
 -- | Subtract two vars
 --
@@ -204,4 +204,5 @@ s0 :: State
 s0 = empty
 
 --run prog s0
-prog = [Declare "v1" (Int 23), Declare "v2" (Int 56)]
+prog = [Declare "v1" (Const (Int 23)), Declare "v2" (Const (Int 56)), Declare "sub" (Sub (Get "v1") (Get "v2")),
+        Declare "sumsum" (Add (Get "sub") (Add (Get "v1") (Get "v2")))]
