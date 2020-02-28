@@ -5,9 +5,7 @@ import Data.Map
 -- State of program is the value of all of the variables
 -- Semantic domain = State -> State = (Map Name Var) -> (Map Name Var)
 
--- TODO (Feb 27th)
---    - CMDs: Call, While/For
---    - Features: Start on static typing, 
+-- TODO: While/For loops
 
 --
 -- TYPE DECLARATIONS
@@ -20,14 +18,14 @@ type Name  = String
 data Cmd = Declare Name Expr
          -- TODO: Decide if we want to change If to: If Expr Cmd Cmd to fit with other cmds.
          | If Name Cmd Cmd
-         | Return Name 
+         | Return Expr
     deriving (Eq,Show)
 
 data Expr = Add Expr Expr
           | Sub Expr Expr
           | Mul Expr Expr
           | Div Expr Expr
-          | Call Name [Name]
+          | Call Name [Expr]
           -- TODO: LessThan name name
           -- TODO: GreaterThan name name
           -- TODO: Equals name name
@@ -95,10 +93,13 @@ expr e s = case e of
             Const (Int _)    -> Int (performOpInt Divi (valInt e1) (valInt e2))
             Const (Double _) -> Double (performOpDbl Divi (valDbl e1) (valDbl e2))
         else expr (Div (Const (expr e1 s)) (Const (expr e2 s))) s
+    -- Call function
+    Call ref es -> call (get ref s) es s
     -- Constant
     Const v   -> v
     -- Get existing variable
     Get ref   -> get ref s
+    
 
 --
 -- EXPRESSION HELPER FUNCTIONS
@@ -168,41 +169,56 @@ typeOf (String _) s = Str_ty
 removeVar :: Name -> State -> State
 removeVar key s = delete key s
 
--- TESTING
-
--- | Add together two vars
---
---
--- | Subtract two vars
---
--- | Multiplies two vars
---
--- | Divide two vars
---
--- | If statement
-
-
 --
 -- FUNCTIONS
 --
 
--- Function [(Type, Name)] Prog
--- data Op = Plus | Minus | Mult | Divi
+call :: Var -> [Expr] -> State -> Var
+call (Function typ params body) passing s = 
+    doFunc body (fetchParams params passing s)
 
---call :: Var -> State -> Var
---call t  s = case t of
---    Int_ty -> undefined
---    Dbl_ty -> undefined
---    Bul_ty -> undefined
---   Str_ty -> undefined
---    Fun_ty -> undefined
+-- Create substate for function with parameters declared.
+fetchParams :: [(Type, Name)] -> [Expr] -> State -> State
+fetchParams ((typ, ref):ps) (e:es) s =
+    (set ref (expr e s) empty) `union` (fetchParams ps es s)
+fetchParams [] [] s = s
+fetchParams _ [] _  = error "Error: Too many parameters passed to function."
+fetchParams [] _ _  = error "Error: Too few parameters passed to function."
 
--- Int | Double | Bool | String | Function
--- data Type = Int_ty | Dbl_ty | Bul_ty | Str_ty | Fun_ty
+doFunc :: Prog -> State -> Var
+doFunc (c:cs) s = case c of
+    Return e  -> (expr e s) 
+    otherwise -> doFunc cs (cmd c s)
+doFunc [] _     = error "Error: No Return Statement from function"
 
+--
+-- SYNTACTIC SUGAR
+--
+
+-- S0 is the empty state
 s0 :: State
 s0 = empty
+
+--
+-- DOCTESTS
+--
+
+-- TODO testing for:
+-- | Add together two vars
+-- | Subtract two vars
+-- | Multiplies two vars
+-- | Divide two vars
+-- | If statement
+
+--
+-- MANUAL TESTING
+--
 
 --run prog s0
 prog = [Declare "v1" (Const (Int 23)), Declare "v2" (Const (Int 56)), Declare "sub" (Sub (Get "v1") (Get "v2")),
         Declare "sumsum" (Add (Get "sub") (Add (Get "v1") (Get "v2")))]
+
+function = [Declare "f" (Const (Function Int_ty [(Int_ty, "num1"), (Int_ty, "num2")] 
+           [Return (Add (Get "num1") (Get "num2"))]))]
+functionCall = [Declare "result" (Call "f" [Const (Int 31), Const (Int 12)])]
+funProg = run functionCall (run function s0)
