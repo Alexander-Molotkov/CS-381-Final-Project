@@ -15,12 +15,14 @@ type State = Map Name Var
 type Prog  = [Cmd]
 type Name  = String
 
+-- Commands change the program's state
 data Cmd = Declare Name Expr
          -- TODO: Decide if we want to change If to: If Expr Cmd Cmd to fit with other cmds.
          | If Name Cmd Cmd
          | Return Expr
     deriving (Eq,Show)
 
+-- Expressions perform operations and return variables
 data Expr = Add Expr Expr
           | Sub Expr Expr
           | Mul Expr Expr
@@ -40,7 +42,8 @@ data Var = Int Int
          | Function Type [(Type, Name)] Prog
     deriving (Eq,Show)
 
-data Op = Plus | Minus | Mult | Divi
+-- The arithmetic operators that we support
+data Op = Plus | Minus | Mult | Divi -- TODO: Divide by 0 case
     deriving (Eq,Show)
 
 --            Int  | Double |  Bool  | String | Function
@@ -149,7 +152,7 @@ valBool v s =
 -- VARIABLE MANIPULATION
 --
 
-
+-- Returns a variable by name
 get :: Name -> State -> Var 
 get key s = s ! key
 -- TODO: Variable does not exist case
@@ -173,11 +176,13 @@ removeVar key s = delete key s
 -- FUNCTIONS
 --
 
+-- Call a function
 call :: Var -> [Expr] -> State -> Var
 call (Function typ params body) passing s = 
     doFunc body (fetchParams params passing s)
 
--- Create substate for function with parameters declared.
+-- Gets the parameters that are passed by reference in a function call
+-- Returns a state with just those parameters - the 'scope' of the function
 fetchParams :: [(Type, Name)] -> [Expr] -> State -> State
 fetchParams ((typ, ref):ps) (e:es) s =
     (set ref (expr e s) empty) `union` (fetchParams ps es s)
@@ -185,6 +190,7 @@ fetchParams [] [] s = s
 fetchParams _ [] _  = error "Error: Too many parameters passed to function."
 fetchParams [] _ _  = error "Error: Too few parameters passed to function."
 
+-- Actually carries out the function body
 doFunc :: Prog -> State -> Var
 doFunc (c:cs) s = case c of
     Return e  -> (expr e s) 
@@ -214,9 +220,12 @@ s0 = empty
 -- MANUAL TESTING
 --
 
---run prog s0
-prog = [Declare "v1" (Const (Int 23)), Declare "v2" (Const (Int 56)), Declare "sub" (Sub (Get "v1") (Get "v2")),
-        Declare "sumsum" (Add (Get "sub") (Add (Get "v1") (Get "v2")))]
+--run <program> s0
+prog = run [Declare "v1" (Const (Int 23)), Declare "v2" (Const (Int 56)), Declare "sub" (Sub (Get "v1") (Get "v2")),
+        Declare "sumsum" (Add (Get "sub") (Mul (Get "v1") (Get "v2")))] s0
+
+ifProg = run [Declare "true" (Const (Bool True)), If "true" (Declare "True" (Const (Int 1)))
+             (Declare "False" (Const (Int 0)))] s0
 
 function = [Declare "f" (Const (Function Int_ty [(Int_ty, "num1"), (Int_ty, "num2")] 
            [Return (Add (Get "num1") (Get "num2"))]))]
