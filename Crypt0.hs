@@ -5,7 +5,8 @@ import Data.Map
 -- State of program is the value of all of the variables
 -- Semantic domain = State -> State = (Map Name Var) -> (Map Name Var)
 
--- TODO: While/For loops
+
+-- TODO: Type checking
 
 --
 -- TYPE DECLARATIONS
@@ -17,8 +18,9 @@ type Name  = String
 
 -- Commands change the program's state
 data Cmd = Declare Name Expr
-         -- TODO: Decide if we want to change If to: If Expr Cmd Cmd to fit with other cmds.
-         | If Name Cmd Cmd
+         | If Expr Prog Prog
+         | While Expr Prog
+         | For Expr Expr Expr Prog
          | Return Expr
     deriving (Eq,Show)
 
@@ -28,9 +30,9 @@ data Expr = Add Expr Expr
           | Mul Expr Expr
           | Div Expr Expr
           | Call Name [Expr]
-          -- TODO: LessThan name name
-          -- TODO: GreaterThan name name
-          -- TODO: Equals name name
+          | Lt Expr Expr
+          | Gt Expr Expr 
+          | Eq Expr Expr
           | Const Var
           | Get Name
     deriving (Eq,Show)
@@ -59,14 +61,15 @@ run (c:cs) s = run cs (cmd c s)
 run [] s = s 
 
 cmd :: Cmd -> State -> State
-cmd c s = case c of
+cmd command s = case command of
     -- Variable declaration
     Declare ref e -> set ref (expr e s) s
     -- If statement
-    If b c1 c2    -> 
-        if (valBool b s)
-        then cmd c1 s
-        else cmd c2 s
+    If e c1 c2    -> ifStatement e c1 c2 s
+    -- While loop 
+    While e c     -> whileLoop e c s
+    -- For loop
+    For d c it p  -> forLoop d c it p s
 
 expr :: Expr -> State -> Var
 expr e s = case e of
@@ -82,7 +85,7 @@ expr e s = case e of
         then case e1 of 
             Const (Int _)    -> Int (performOpInt Minus (valInt e1) (valInt e2))
             Const (Double _) -> Double (performOpDbl Minus (valDbl e1) (valDbl e2))
-         -- TODO: "Str"     -> set r (String (performOpStr (valStr v1 s) (valStr v2 s) Minus)) s
+         -- TODO: "Str"      -> set r (String (performOpStr (valStr v1 s) (valStr v2 s) Minus)) s
         else expr (Sub (Const (expr e1 s)) (Const (expr e2 s))) s
     -- Multiplication
     Mul e1 e2 -> if isConst e1 && isConst e2 
@@ -96,13 +99,36 @@ expr e s = case e of
             Const (Int _)    -> Int (performOpInt Divi (valInt e1) (valInt e2))
             Const (Double _) -> Double (performOpDbl Divi (valDbl e1) (valDbl e2))
         else expr (Div (Const (expr e1 s)) (Const (expr e2 s))) s
+    -- Less than check
+    Lt e1 e2  -> if isConst e1 && isConst e2
+        then case e1 of
+            Const (Int _)    -> 
+               if valInt e1 < valInt e2 then Bool True else Bool False
+            Const (Double _) -> 
+               if valDbl e1 < valDbl e2 then Bool True else Bool False
+        else expr (Lt (Const (expr e1 s)) (Const (expr e2 s))) s
+    -- Greater than check
+    Gt e1 e2  -> if isConst e1 && isConst e2
+        then case e1 of
+            Const (Int _)    -> 
+               if valInt e1 > valInt e2 then Bool True else Bool False
+            Const (Double _) -> 
+               if valDbl e1 > valDbl e2 then Bool True else Bool False
+        else expr (Gt (Const (expr e1 s)) (Const (expr e2 s))) s
+    -- Equality check
+    Eq e1 e2  -> if isConst e1 && isConst e2
+        then case e1 of
+            Const (Int _)    -> 
+               if valInt e1 == valInt e2 then Bool True else Bool False
+            Const (Double _) -> 
+               if valDbl e1 == valDbl e2 then Bool True else Bool False
+        else expr (Eq (Const (expr e1 s)) (Const (expr e2 s))) s
     -- Call function
     Call ref es -> call (get ref s) es s
     -- Constant
     Const v   -> v
     -- Get existing variable
     Get ref   -> get ref s
-    
 
 --
 -- EXPRESSION HELPER FUNCTIONS
@@ -143,10 +169,8 @@ performOpStr o x y =
 valStr :: Expr -> String
 valStr (Const (String x)) = x
 
-valBool :: Name -> State -> Bool
-valBool v s = 
-    case get v s of
-      Bool x -> x
+valBool :: Expr -> Bool
+valBool (Const (Bool x)) = x
 
 --
 -- VARIABLE MANIPULATION
@@ -171,6 +195,16 @@ typeOf (String _) s = Str_ty
 -- Removes a variable from scope
 removeVar :: Name -> State -> State
 removeVar key s = delete key s
+
+--
+-- CONDITIONAL STATEMENTS
+--
+
+-- If statement
+ifStatement :: Expr -> Prog -> Prog -> State -> State
+ifStatement e c1 c2 s = case expr e s of
+    (Bool b)  -> if b then run c1 s else run c2 s
+    otherwise -> ifStatement (Const (expr e s)) c1 c2 s
 
 --
 -- FUNCTIONS
@@ -201,6 +235,18 @@ doFunc [] _     = error "Error: No Return Statement from function"
 -- SYNTACTIC SUGAR
 --
 
+-- While Loop
+-- NOTE: While statements do not create their own scope -> TODO?
+whileLoop :: Expr -> Prog -> State -> State
+whileLoop e c s = case expr e s of
+    (Bool b)  -> if b then whileLoop e c (run c s) else s
+    otherwise -> whileLoop (Const (expr e s)) c s
+
+-- For Loop
+-- For (int i = 0; i < 10; i++){Stuff}
+forLoop :: Expr -> Expr -> Expr -> Prog -> State -> State
+forLoop = undefined
+
 -- S0 is the empty state
 s0 :: State
 s0 = empty
@@ -221,13 +267,39 @@ s0 = empty
 --
 
 --run <program> s0
-prog = run [Declare "v1" (Const (Int 23)), Declare "v2" (Const (Int 56)), Declare "sub" (Sub (Get "v1") (Get "v2")),
-        Declare "sumsum" (Add (Get "sub") (Mul (Get "v1") (Get "v2")))] s0
+prog = run [Declare "v1" (Const (Int 23)), 
+            Declare "v2" (Const (Int 56)), 
+            Declare "sub" (Sub (Get "v1") (Get "v2")),
+            Declare "sumsum" (Add (Get "sub") (Mul (Get "v1") (Get "v2")))] s0
 
-ifProg = run [Declare "true" (Const (Bool True)), If "true" (Declare "True" (Const (Int 1)))
-             (Declare "False" (Const (Int 0)))] s0
+ifProg = run [Declare "true" (Const (Bool True)), 
+              If (Get "true") 
+                  [(Declare "True" (Const (Int 1)))]
+                  [(Declare "False" (Const (Int 0)))]] s0
+
+ltProg = run [Declare "lt" (Const (Int 5)), 
+              Declare "gt" (Const (Int 10)),
+              If ( Lt (Get "lt") (Get "gt"))
+                  [Declare "True" (Const (Bool True))] 
+                  [Declare "False" (Const (Bool False))]] s0
+
+gtProg = run [Declare "lt" (Const (Int 5)), 
+              Declare "gt" (Const (Int 10)), 
+              If ( Gt (Get "gt") (Get "lt"))
+                  [Declare "True" (Const (Bool True))] 
+                  [Declare "False" (Const (Bool False))]] s0
+
+eqProg = run [Declare "1" (Const (Int 10)), 
+              Declare "2" (Const (Int 10)), 
+              If ( Eq (Get "1") (Get "2"))
+                  [Declare "True" (Const (Bool True))] 
+                  [Declare "False" (Const (Bool False))]] s0
 
 function = [Declare "f" (Const (Function Int_ty [(Int_ty, "num1"), (Int_ty, "num2")] 
-           [Return (Add (Get "num1") (Get "num2"))]))]
+               [Return (Add (Get "num1") (Get "num2"))]))]
 functionCall = [Declare "result" (Call "f" [Const (Int 31), Const (Int 12)])]
 funProg = run functionCall (run function s0)
+
+whileProg = run [Declare "i" (Const (Int 5)), 
+                 While (Lt (Const (Int 0)) (Get "i")) 
+                     [Declare "i" (Sub (Get "i") (Const (Int 1))) ]] s0
