@@ -5,7 +5,6 @@ import Data.Map
 -- State of program is the value of all of the variables
 -- Semantic domain = State -> State = (Map Name Var) -> (Map Name Var)
 
-
 -- TODO: Type checking
 
 --
@@ -87,7 +86,7 @@ expr e s = case e of
         then case e1 of 
             Const (Int _)    -> Int (performOpInt Minus (valInt e1) (valInt e2))
             Const (Double _) -> Double (performOpDbl Minus (valDbl e1) (valDbl e2))
-         -- TODO: "Str"      -> set r (String (performOpStr (valStr v1 s) (valStr v2 s) Minus)) s
+         -- STRETCH: "Str"      -> set r (String (performOpStr (valStr v1 s) (valStr v2 s) Minus)) s
         else expr (Sub (Const (expr e1 s)) (Const (expr e2 s))) s
     -- Multiplication
     Mul e1 e2 -> if isConst e1 && isConst e2 
@@ -125,6 +124,19 @@ expr e s = case e of
             Const (Double _) -> 
                if valDbl e1 == valDbl e2 then Bool True else Bool False
         else expr (Eq (Const (expr e1 s)) (Const (expr e2 s))) s
+    -- Increment
+    Inc e     -> if isConst e 
+        then case e of
+            Const (Int _)    -> (Int ((valInt e) + 1))
+            Const (Double _) -> (Double ((valDbl e) + 1))
+        else expr (Inc (Const (expr e s))) s
+    -- Decrement
+    Dec e     -> if isConst e 
+        then case e of
+            Const (Int _)    -> (Int ((valInt e) - 1))
+            Const (Double _) -> (Double ((valDbl e) - 1))
+        else expr (Dec (Const (expr e s))) s 
+
     -- Call function
     Call ref es -> call (get ref s) es s
     -- Constant
@@ -166,7 +178,7 @@ performOpStr :: Op -> String -> String -> String
 performOpStr o x y = 
     case o of
       Plus  -> x ++ y
-      --TODO: Minus -> x - y
+      --STRETCH: Minus -> x - y
 
 valStr :: Expr -> String
 valStr (Const (String x)) = x
@@ -246,7 +258,7 @@ whileLoop e c s = case expr e s of
 
 -- For Loop
 -- NOTE: For loops do not create their own scope -> TODO?
--- For (declaration expression; condition expression; iterator expression) {prog}
+-- For (declaration; condition; iterator) {prog}
 forLoop :: Cmd -> Expr -> Expr -> Prog -> State -> State
 forLoop decCmd condEx iterEx p s = 
     let s' = cmd decCmd s
@@ -312,7 +324,6 @@ whileProg = run [Declare "i" (Const (Int 5)),
                  While (Lt (Const (Int 0)) (Get "i")) 
                      [Declare "i" (Sub (Get "i") (Const (Int 1))) ]] s0
 
---For (Name, Expr) Expr Expr Prog
 forProg = run [Declare "x" (Const (Int 20)),
-               For (Declare "i" (Const (Int 0))) (Lt (Get "i") (Const (Int 10))) (Inc (Get "i"))
+               For (Declare "i" (Const (Int 0))) (Lt (Get "i") (Const (Int 15))) (Inc (Get "i"))
                    [Declare "x" (Dec (Get "x"))]] s0
