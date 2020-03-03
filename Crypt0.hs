@@ -20,7 +20,7 @@ type Name  = String
 data Cmd = Declare Name Expr
          | If Expr Prog Prog
          | While Expr Prog
-         | For Expr Expr Expr Prog
+         | For Cmd Expr Expr Prog
          | Return Expr
     deriving (Eq,Show)
 
@@ -33,6 +33,8 @@ data Expr = Add Expr Expr
           | Lt Expr Expr
           | Gt Expr Expr 
           | Eq Expr Expr
+          | Inc Expr
+          | Dec Expr
           | Const Var
           | Get Name
     deriving (Eq,Show)
@@ -236,16 +238,22 @@ doFunc [] _     = error "Error: No Return Statement from function"
 --
 
 -- While Loop
--- NOTE: While statements do not create their own scope -> TODO?
+-- NOTE: While loops do not create their own scope -> TODO?
 whileLoop :: Expr -> Prog -> State -> State
 whileLoop e c s = case expr e s of
     (Bool b)  -> if b then whileLoop e c (run c s) else s
     otherwise -> whileLoop (Const (expr e s)) c s
 
 -- For Loop
--- For (int i = 0; i < 10; i++){Stuff}
-forLoop :: Expr -> Expr -> Expr -> Prog -> State -> State
-forLoop = undefined
+-- NOTE: For loops do not create their own scope -> TODO?
+-- For (declaration expression; condition expression; iterator expression) {prog}
+forLoop :: Cmd -> Expr -> Expr -> Prog -> State -> State
+forLoop decCmd condEx iterEx p s = 
+    let s' = cmd decCmd s
+        p' = case decCmd of 
+            (Declare ref ex) -> p ++ [Declare ref iterEx]
+    in whileLoop condEx p' s'
+  
 
 -- S0 is the empty state
 s0 :: State
@@ -303,3 +311,8 @@ funProg = run functionCall (run function s0)
 whileProg = run [Declare "i" (Const (Int 5)), 
                  While (Lt (Const (Int 0)) (Get "i")) 
                      [Declare "i" (Sub (Get "i") (Const (Int 1))) ]] s0
+
+--For (Name, Expr) Expr Expr Prog
+forProg = run [Declare "x" (Const (Int 20)),
+               For (Declare "i" (Const (Int 0))) (Lt (Get "i") (Const (Int 10))) (Inc (Get "i"))
+                   [Declare "x" (Dec (Get "x"))]] s0
