@@ -47,18 +47,14 @@ data Expr = Add Expr Expr
           | D Double
           | B Bool
           | S String
+
           -- | F Function 
     deriving (Eq,Show)
 
--- Keep this in the state, don't actually have this at all
-data Var = Int Int
-         | Double Double
-         | Bool Bool
-         | String String
-          -- Want a return statement inside of that data type
-          -- Other way to keep track of functions?
-         | Function Type [(Type, Name)] Prog
-    deriving (Eq,Show)
+       -- TODO:   
+       -- Want a return statement inside of that data type
+       -- Other way to keep track of functions?
+       -- | Function Type [(Type, Name)] Prog
 
 data Op = Plus | Minus | Mult | Divi -- TODO: Divide by 0 case
     deriving (Eq,Show)
@@ -86,7 +82,8 @@ cmd command s = case command of
     -- For loop
     For d c it p  -> forLoop d c it p s
 
-expr :: Expr -> State -> Var
+-- what should expr return? (Type, Expr) or Expr?
+expr :: Expr -> State -> Expr
 expr e s = case e of
     -- Addition
     Add e1 e2 -> undefined
@@ -105,7 +102,7 @@ expr e s = case e of
     -- Call function
     Call ref es -> undefined
     -- Get existing variable
-    Get ref   -> undefined
+    Get ref   -> snd (get ref s)
 
 --
 -- EXPRESSION HELPER FUNCTIONS
@@ -168,9 +165,9 @@ ifStatement e c1 c2 s = undefined
 --
 
 -- Call a function
-call :: Var -> [Expr] -> State -> Var
-call (Function typ params body) passing s = 
-    doFunc body (fetchParams params passing s)
+--call :: Var -> [Expr] -> State -> Var
+--call (Function typ params body) passing s = 
+--    doFunc body (fetchParams params passing s)
 
 -- Gets the parameters that are passed by reference in a function call
 -- Returns a state with just those parameters - the 'scope' of the function
@@ -181,11 +178,11 @@ fetchParams _ [] _  = error "Error: Too many parameters passed to function."
 fetchParams [] _ _  = error "Error: Too few parameters passed to function."
 
 -- Actually carries out the function body
-doFunc :: Prog -> State -> Var
-doFunc (c:cs) s = case c of
-    Return e  -> (expr e s) 
-    otherwise -> doFunc cs (cmd c s)
-doFunc [] _     = error "Error: No Return Statement from function"
+--doFunc :: Prog -> State -> Var
+--doFunc (c:cs) s = case c of
+--   Return e  -> (expr e s) 
+--   otherwise -> doFunc cs (cmd c s)
+--doFunc [] _     = error "Error: No Return Statement from function"
 
 --
 -- SYNTACTIC SUGAR
@@ -223,7 +220,7 @@ s0 = empty
 --
 
 --run <program> s0
-prog = undefined
+prog = [Declare "set" (TInt, I 23), Declare "get" (TInt, (Get "set"))]
 
 ifProg = undefined
 
