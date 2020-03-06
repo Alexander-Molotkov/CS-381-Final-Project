@@ -59,7 +59,7 @@ data Expr = Add Expr Expr
 data Op = Plus | Minus | Mult | Divi -- TODO: Divide by 0 case
     deriving (Eq,Show)
 
---            Int  | Double |  Bool  | String | Function
+--          Int  | Double |  Bool  | String | Function
 data Type = TInt | TDbl | TBool | TStr | TFunc | TErr
     deriving (Eq,Show)
 
@@ -236,3 +236,12 @@ whileProg = undefined
 
 --For (Name, Expr) Expr Expr Prog
 forProg = undefined
+
+-- Change expr to evaluate expressions recursively instead of how it is now, 
+-- make function for all operators for cleanliness
+-- For loops and while loops are iffy, as are increment and decrement (they don't actually do those things)
+-- Investigate L values and R values -> a solution to many problems is making expressions also change state.
+--    TODO: Left expreesions and right expressions
+--    Problems: Increment, Decrement, Global scope would be nice, For loops need to be exact in function/clear
+-- 
+
