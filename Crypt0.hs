@@ -7,6 +7,7 @@ import Data.Map
 
 
 -- TODO: Type checking
+-- TODO: Divide by zero
 
 --
 -- TYPE DECLARATIONS
@@ -17,7 +18,8 @@ type Prog  = [Cmd]
 type Name  = String
 
 -- Commands change the program's state
-data Cmd = Declare Name Expr
+data Cmd =
+           Declare Name Expr
          | If Expr Prog Prog
          | While Expr Prog
          | For Cmd Expr Expr Prog
@@ -25,10 +27,8 @@ data Cmd = Declare Name Expr
     deriving (Eq,Show)
 
 -- Expressions perform operations and return variables
-data Expr = Add Expr Expr
-          | Sub Expr Expr
-          | Mul Expr Expr
-          | Div Expr Expr
+data Expr = 
+            BinOp Op Expr Expr
           | Call Name [Expr]
           | Lt Expr Expr
           | Gt Expr Expr 
@@ -47,7 +47,7 @@ data Var = Int Int
     deriving (Eq,Show)
 
 -- The arithmetic operators that we support
-data Op = Plus | Minus | Mult | Divi -- TODO: Divide by 0 case
+data Op = Add | Sub | Mul | Div -- TODO: Divde by 0 case
     deriving (Eq,Show)
 
 --            Int  | Double |  Bool  | String | Function
@@ -76,31 +76,8 @@ cmd command s = case command of
 expr :: Expr -> State -> Var
 expr e s = case e of
     -- Addition
-    Add e1 e2 -> if isConst e1 && isConst e2 
-        then case e1 of 
-            Const (Int _)    -> Int (performOpInt Plus (valInt e1) (valInt e2))
-            Const (Double _) -> Double (performOpDbl Plus (valDbl e1) (valDbl e2))
-            Const (String _) -> String (performOpStr Plus (valStr e1) (valStr e2))
-        else expr (Add (Const (expr e1 s)) (Const (expr e2 s))) s
-    -- Subtraction
-    Sub e1 e2 -> if isConst e1 && isConst e2 
-        then case e1 of 
-            Const (Int _)    -> Int (performOpInt Minus (valInt e1) (valInt e2))
-            Const (Double _) -> Double (performOpDbl Minus (valDbl e1) (valDbl e2))
-         -- TODO: "Str"      -> set r (String (performOpStr (valStr v1 s) (valStr v2 s) Minus)) s
-        else expr (Sub (Const (expr e1 s)) (Const (expr e2 s))) s
-    -- Multiplication
-    Mul e1 e2 -> if isConst e1 && isConst e2 
-        then case e1 of 
-            Const (Int _)    -> Int (performOpInt Mult (valInt e1) (valInt e2))
-            Const (Double _) -> Double (performOpDbl Mult (valDbl e1) (valDbl e2))
-        else expr (Mul (Const (expr e1 s)) (Const (expr e2 s))) s
-    -- Division
-    Div e1 e2 -> if isConst e1 && isConst e2 
-        then case e1 of 
-            Const (Int _)    -> Int (performOpInt Divi (valInt e1) (valInt e2))
-            Const (Double _) -> Double (performOpDbl Divi (valDbl e1) (valDbl e2))
-        else expr (Div (Const (expr e1 s)) (Const (expr e2 s))) s
+    BinOp o e1 e2 -> case (expr e1 s, expr e2 s) of
+        (v1, v2)             -> op o v1 v2
     -- Less than check
     Lt e1 e2  -> if isConst e1 && isConst e2
         then case e1 of
@@ -140,33 +117,24 @@ isConst :: Expr -> Bool
 isConst (Const _) = True
 isConst _         = False
 
-performOpInt :: Op -> Int -> Int -> Int
-performOpInt o x y = 
-    case o of
-      Plus  -> x + y
-      Minus -> x - y
-      Mult  -> x * y
-      Divi  -> x `div` y
-
+op :: Op -> Var -> Var -> Var
+op Add (Int s1) (Int s2)       = Int    (s1 + s2)
+op Add (Double s1) (Double s2) = Double (s1 + s2)
+op Add (String s1) (String s2) = String (s1 ++ s2)
+op Sub (Int s1) (Int s2)       = Int    (s1 - s2)
+op Sub (Double s1) (Double s2) = Double (s1 - s2)
+-- TODO: op Sub (String s1) (String s2) = String (s1 -- s2)
+op Mul (Int s1) (Int s2)       = Int    (s1 * s2)
+op Mul (Double s1) (Double s2) = Double (s1 * s2)
+op Div (Int s1) (Int s2)       = Int    (s1 `div` s2)
+op Div (Double s1) (Double s2) = Double (s1 / s2)
+   
+ 
 valInt :: Expr -> Int
 valInt (Const (Int x)) = x
 
-performOpDbl :: Op -> Double -> Double -> Double
-performOpDbl o x y = 
-    case o of
-      Plus  -> x + y
-      Minus -> x - y
-      Mult  -> x * y
-      Divi  -> x / y
-
 valDbl :: Expr -> Double
 valDbl (Const (Double x)) = x
-
-performOpStr :: Op -> String -> String -> String
-performOpStr o x y = 
-    case o of
-      Plus  -> x ++ y
-      --TODO: Minus -> x - y
 
 valStr :: Expr -> String
 valStr (Const (String x)) = x
@@ -266,7 +234,7 @@ s0 = empty
 -- TODO testing for:
 -- | Add together two vars
 -- | Subtract two vars
--- | Multiplies two vars
+-- | Muliplies two vars
 -- | Divide two vars
 -- | If statement
 
@@ -275,10 +243,23 @@ s0 = empty
 --
 
 --run <program> s0
-prog = run [Declare "v1" (Const (Int 23)), 
-            Declare "v2" (Const (Int 56)), 
-            Declare "sub" (Sub (Get "v1") (Get "v2")),
-            Declare "sumsum" (Add (Get "sub") (Mul (Get "v1") (Get "v2")))] s0
+addProg = [Declare "num" (Const (Int 23)), 
+           Declare "num2" (Const (Int 24)), 
+           Declare "Result" (BinOp Add (Get "num") (Get "num2"))]
+         
+subProg = [Declare "num" (Const (Int 23)), 
+             Declare "num2" (Const (Int 24)), 
+             Declare "Result" (BinOp Sub (Get "num") (Get "num2"))]         
+           
+mulProg = [Declare "num" (Const (Int 23)), 
+           Declare "num2" (Const (Int 24)), 
+           Declare "Result" (BinOp Mul (Get "num") (Get "num2"))]         
+
+divProg = [Declare "num" (Const (Int 23)), 
+           Declare "num2" (Const (Int 24)), 
+           Declare "Result" (BinOp Div (Get "num") (Get "num2"))]         
+
+
 
 ifProg = run [Declare "true" (Const (Bool True)), 
               If (Get "true") 
@@ -303,14 +284,9 @@ eqProg = run [Declare "1" (Const (Int 10)),
                   [Declare "True" (Const (Bool True))] 
                   [Declare "False" (Const (Bool False))]] s0
 
-function = [Declare "f" (Const (Function Int_ty [(Int_ty, "num1"), (Int_ty, "num2")] 
-               [Return (Add (Get "num1") (Get "num2"))]))]
-functionCall = [Declare "result" (Call "f" [Const (Int 31), Const (Int 12)])]
-funProg = run functionCall (run function s0)
+funProg = undefined
 
-whileProg = run [Declare "i" (Const (Int 5)), 
-                 While (Lt (Const (Int 0)) (Get "i")) 
-                     [Declare "i" (Sub (Get "i") (Const (Int 1))) ]] s0
+whileProg = undefined
 
 --For (Name, Expr) Expr Expr Prog
 forProg = run [Declare "x" (Const (Int 20)),
