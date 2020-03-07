@@ -5,7 +5,6 @@ import Data.Map
 -- State of program is the value of all of the variables
 -- Semantic domain = State -> State = (Map Name Var) -> (Map Name Var)
 
-
 -- TODO: Type checking
 -- TODO: Divide by zero
 
@@ -78,6 +77,7 @@ expr e s = case e of
     -- Addition
     BinOp o e1 e2 -> case (expr e1 s, expr e2 s) of
         (v1, v2)             -> op o v1 v2
+
     -- Less than check
     Lt e1 e2  -> if isConst e1 && isConst e2
         then case e1 of
@@ -102,6 +102,19 @@ expr e s = case e of
             Const (Double _) -> 
                if valDbl e1 == valDbl e2 then Bool True else Bool False
         else expr (Eq (Const (expr e1 s)) (Const (expr e2 s))) s
+    -- Increment
+    Inc e     -> if isConst e 
+        then case e of
+            Const (Int _)    -> (Int ((valInt e) + 1))
+            Const (Double _) -> (Double ((valDbl e) + 1))
+        else expr (Inc (Const (expr e s))) s
+    -- Decrement
+    Dec e     -> if isConst e 
+        then case e of
+            Const (Int _)    -> (Int ((valInt e) - 1))
+            Const (Double _) -> (Double ((valDbl e) - 1))
+        else expr (Dec (Const (expr e s))) s 
+
     -- Call function
     Call ref es -> call (get ref s) es s
     -- Constant
@@ -214,7 +227,7 @@ whileLoop e c s = case expr e s of
 
 -- For Loop
 -- NOTE: For loops do not create their own scope -> TODO?
--- For (declaration expression; condition expression; iterator expression) {prog}
+-- For (declaration; condition; iterator) {prog}
 forLoop :: Cmd -> Expr -> Expr -> Prog -> State -> State
 forLoop decCmd condEx iterEx p s = 
     let s' = cmd decCmd s
@@ -288,7 +301,6 @@ funProg = undefined
 
 whileProg = undefined
 
---For (Name, Expr) Expr Expr Prog
 forProg = run [Declare "x" (Const (Int 20)),
-               For (Declare "i" (Const (Int 0))) (Lt (Get "i") (Const (Int 10))) (Inc (Get "i"))
+               For (Declare "i" (Const (Int 0))) (Lt (Get "i") (Const (Int 15))) (Inc (Get "i"))
                    [Declare "x" (Dec (Get "x"))]] s0
