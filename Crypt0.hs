@@ -5,17 +5,16 @@ import Data.Map
 -- State of program is the value of all of the variables
 -- Semantic domain = State -> State = (Map Name Var) -> (Map Name Var)
 
-
 -- TODO: Type checking
--- TODO: Divide by zero
 
 --
 -- TYPE DECLARATIONS
 --
 
-type State = Map Name Var
-type Prog  = [Cmd]
-type Name  = String
+type State  = Map Name Var
+type Prog   = [Cmd]
+type Name   = String
+type Params = [Expr]
 
 -- Commands change the program's state
 data Cmd = Declare Name Expr
@@ -102,7 +101,7 @@ expr e s = case e of
         (Bool v1, Bool v2)     -> Bool (v1 == v2)
         (String v1, String v2) -> Bool (v1 == v2)
     -- Call function
-    Call ref es -> undefined
+    Call ref es -> call ref es s
     -- Lit
     Lit v   -> v
     -- Get existing variable
@@ -153,6 +152,11 @@ iter ref o s = case get ref s of
 valBool :: Var -> Bool
 valBool (Bool b) = b
 
+varExists :: Name -> State -> Bool
+varExists ref s = case Data.map.lookup ref s of
+    (Just v) -> True
+    (Nothing -> False
+
 --
 -- LOOPS
 --
@@ -174,7 +178,13 @@ for (ref, e) cmp iter p s =
 -- FUNCTIONS
 --
 
+call :: Name -> Params -> State -> Var
+call ref prms s = runFunc (Get ref s) prms s empty
 
+runFunc :: Var -> Params -> State -> State -> Var
+runFunc (Function rt fvars (c:cs)) prms Sglbl Sfunc =
+
+-- Function Type [(Type, Name)] Prog
 
 --
 -- SYNTACTIC SUGAR
