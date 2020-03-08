@@ -18,37 +18,29 @@ type Prog  = [Cmd]
 type Name  = String
 
 -- Commands change the program's state
-data Cmd =
-           Declare Name Expr
+data Cmd = Declare Name Expr
          | If Expr Prog Prog
          | Iterate CmdIter Name
-         | While ExprCmp Prog
-         | For (Name, Expr) ExprCmp CmdIter Prog
+         | While Expr Prog
+         | For (Name, Expr) Expr CmdIter Prog
 
          | Return Expr
 
     deriving (Eq,Show)
 
 -- Subset of commands that iterate variables
-data CmdIter =
-               Inc
+data CmdIter = Inc
              | Dec
         deriving (Eq,Show)
 
 -- Expressions perform operations and return variables
-data Expr = 
-            BinOp Op Expr Expr
-          | Call Name [Expr]
+data Expr = BinOp Op Expr Expr
           | Lit Var
           | Get Name
-          | Cmp ExprCmp
-    deriving (Eq,Show)
-
--- Subset of Expressions that compare two variables
-data ExprCmp =
-               Lt Expr Expr
-              | Gt Expr Expr 
-              | Eq Expr Expr
+          | Lt Expr Expr 
+          | Gt Expr Expr 
+          | Eq Expr Expr
+          | Call Name [Expr]
     deriving (Eq,Show)
 
 data Var = Int Int
@@ -59,7 +51,7 @@ data Var = Int Int
     deriving (Eq,Show)
 
 -- The arithmetic operators that we support
-data Op = Add | Sub | Mul | Div -- TODO: Divde by 0 case
+data Op = Add | Sub | Mul | Div
     deriving (Eq,Show)
 
 --            Int  | Double |  Bool  | String | Function
@@ -95,26 +87,22 @@ expr e s = case e of
     -- Addition
     BinOp o e1 e2 -> case (expr e1 s, expr e2 s) of
         (v1, v2) -> op o v1 v2
-    -- Comparison Operators
-    (Cmp cmp)  -> case cmp of
-        -- Less than check
-        Lt e1 e2  -> case (expr e1 s, expr e2 s) of
-            (Int v1, Int v2)       -> Bool (v1 < v2)
-            (Double v1, Double v2) -> Bool (v1 < v2)
-        -- Greater than check
-        Gt e1 e2  -> case (expr e1 s, expr e2 s) of
-            (Int v1, Int v2)       -> Bool (v1 > v2)
-            (Double v1, Double v2) -> Bool (v1 > v2)
-        -- Equality check
-        Eq e1 e2  -> case (expr e1 s, expr e2 s) of
-            (Int v1, Int v2)       -> Bool (v1 == v2)
-            (Double v1, Double v2) -> Bool (v1 == v2)
-            (Bool v1, Bool v2)     -> Bool (v1 == v2)
-            (String v1, String v2) -> Bool (v1 == v2)
-
+    -- Less than check
+    Lt e1 e2  -> case (expr e1 s, expr e2 s) of
+        (Int v1, Int v2)       -> Bool (v1 < v2)
+        (Double v1, Double v2) -> Bool (v1 < v2)
+    -- Greater than check
+    Gt e1 e2  -> case (expr e1 s, expr e2 s) of
+        (Int v1, Int v2)       -> Bool (v1 > v2)
+        (Double v1, Double v2) -> Bool (v1 > v2)
+    -- Equality check
+    Eq e1 e2  -> case (expr e1 s, expr e2 s) of
+        (Int v1, Int v2)       -> Bool (v1 == v2)
+        (Double v1, Double v2) -> Bool (v1 == v2)
+        (Bool v1, Bool v2)     -> Bool (v1 == v2)
+        (String v1, String v2) -> Bool (v1 == v2)
     -- Call function
     Call ref es -> undefined
-
     -- Lit
     Lit v   -> v
     -- Get existing variable
@@ -133,9 +121,10 @@ op Sub (Double s1) (Double s2) = Double (s1 - s2)
 -- TODO: op Sub (String s1) (String s2) = String (s1 -- s2)
 op Mul (Int s1) (Int s2)       = Int    (s1 * s2)
 op Mul (Double s1) (Double s2) = Double (s1 * s2)
-op Div (Int s1) (Int s2)       = Int    (s1 `div` s2)
-op Div (Double s1) (Double s2) = Double (s1 / s2)
-   
+op Div (Int s1) (Int s2)       = if s2 /= 0
+    then Int (s1 `div` s2) else error "ERROR: attempt to divide by 0"
+op Div (Double s1) (Double s2) = if s2 /= 0 
+    then Double (s1 / s2)  else error "ERROR: attempt to divide by 0"
 --
 -- VARIABLE MANIPULATION
 --
@@ -171,11 +160,11 @@ valBool (Bool b) = b
 -- NOTE: loops are part of the same function scope they are run in
 
 -- A while loop of the form `while (condition) {prog}`
-while :: ExprCmp -> Prog -> State -> State
-while e p s = if valBool (expr (Cmp e) s) then while e p (run p s) else s
+while :: Expr -> Prog -> State -> State
+while e p s = if valBool (expr e s) then while e p (run p s) else s
 
 -- A for loop of the form `for (declaration; condition; iterator) {prog}`
-for :: (Name, Expr) -> ExprCmp -> CmdIter -> Prog -> State -> State
+for :: (Name, Expr) -> Expr -> CmdIter -> Prog -> State -> State
 for (ref, e) cmp iter p s = 
     let s' = set ref (expr e s) s
         p' = (Iterate iter ref) : p
@@ -212,20 +201,24 @@ s0 = empty
 
 --run <program> s0
 addProg = run [Declare "num" (Lit (Int 23)), 
-           Declare "num2" (Lit (Int 24)), 
-           Declare "Result" (BinOp Add (Get "num") (Get "num2"))] s0
+               Declare "num2" (Lit (Int 24)), 
+               Declare "Result" (BinOp Add (Get "num") (Get "num2"))] s0
          
 subProg = run [Declare "num" (Lit (Int 23)), 
-             Declare "num2" (Lit (Int 24)), 
-             Declare "Result" (BinOp Sub (Get "num") (Get "num2"))] s0        
+               Declare "num2" (Lit (Int 24)), 
+               Declare "Result" (BinOp Sub (Get "num") (Get "num2"))] s0        
            
 mulProg = run [Declare "num" (Lit (Int 23)), 
-           Declare "num2" (Lit (Int 24)), 
-           Declare "Result" (BinOp Mul (Get "num") (Get "num2"))] s0      
+               Declare "num2" (Lit (Int 24)), 
+               Declare "Result" (BinOp Mul (Get "num") (Get "num2"))] s0      
 
 divProg = run [Declare "num" (Lit (Int 23)), 
-           Declare "num2" (Lit (Int 24)), 
-           Declare "Result" (BinOp Div (Get "num") (Get "num2"))] s0        
+               Declare "num2" (Lit (Int 24)), 
+               Declare "Result" (BinOp Div (Get "num") (Get "num2"))] s0        
+
+divZeroProg = run [Declare "num" (Lit (Int 23)), 
+                   Declare "num2" (Lit (Int 0)), 
+                   Declare "Result" (BinOp Div (Get "num") (Get "num2"))] s0        
 
 ifProg = run [Declare "true" (Lit (Bool True)), 
               If (Get "true") 
@@ -234,19 +227,19 @@ ifProg = run [Declare "true" (Lit (Bool True)),
 
 ltProg = run [Declare "lt" (Lit (Int 5)), 
               Declare "gt" (Lit (Int 10)),
-              If (Cmp (Lt (Get "lt") (Get "gt")))
+              If (Lt (Get "lt") (Get "gt"))
                  [Declare "True" (Lit (Bool True))] 
                  [Declare "False" (Lit (Bool False))]] s0
 
 gtProg = run [Declare "lt" (Lit (Int 5)), 
               Declare "gt" (Lit (Int 10)), 
-              If (Cmp (Gt (Get "gt") (Get "lt")))
+              If (Gt (Get "gt") (Get "lt"))
                  [Declare "True" (Lit (Bool True))] 
                  [Declare "False" (Lit (Bool False))]] s0
 
 eqProg = run [Declare "1" (Lit (Int 10)), 
               Declare "2" (Lit (Int 10)), 
-              If (Cmp (Eq (Get "1") (Get "2")))
+              If (Eq (Get "1") (Get "2"))
                  [Declare "True" (Lit (Bool True))] 
                  [Declare "False" (Lit (Bool False))]] s0
 
