@@ -21,8 +21,7 @@ type Name  = String
 data Cmd =
            Declare Name Expr
          | If Expr Prog Prog
-         | Iterate CmdIter
-
+         | Iterate CmdIter Name
          | While ExprCmp Prog
          | For (Name, Expr) ExprCmp CmdIter Prog
 
@@ -32,8 +31,8 @@ data Cmd =
 
 -- Subset of commands that iterate variables
 data CmdIter =
-               Inc Name
-             | Dec Name
+               Inc
+             | Dec
         deriving (Eq,Show)
 
 -- Expressions perform operations and return variables
@@ -78,18 +77,18 @@ run [] s = s
 cmd :: Cmd -> State -> State
 cmd command s = case command of
     -- Variable declaration
-    Declare ref e     -> set ref (expr e s) s
+    Declare ref e   -> set ref (expr e s) s
     -- If statement
-    If e c1 c2        -> case expr e s of
+    If e c1 c2      -> case expr e s of
         (Bool b)  -> if b then run c1 s else run c2 s
     -- While loop 
-    While e c         -> undefined
+    While e c       -> while e c s
     -- For loop
-    For d c it p      -> undefined
+    For d c it p    -> for d c it p s
     -- Increment
-    Iterate (Inc ref) -> run (iter ref Add s) s
+    Iterate Inc ref -> run (iter ref Add s) s
     -- Decrement
-    Iterate (Dec ref) -> run (iter ref Sub s) s
+    Iterate Dec ref -> run (iter ref Sub s) s
 
 expr :: Expr -> State -> Var
 expr e s = case e of
@@ -160,6 +159,27 @@ iter ::  Name -> Op -> State -> Prog
 iter ref o s = case get ref s of 
     (Int i)    -> [Declare ref (BinOp o (Lit (Int i)) (Lit (Int 1)))]
     (Double d) -> [Declare ref (BinOp o (Lit (Double d)) (Lit (Double 1)))]
+
+-- Pulls the value out of a bool variable
+valBool :: Var -> Bool
+valBool (Bool b) = b
+
+--
+-- LOOPS
+--
+
+-- NOTE: loops are part of the same function scope they are run in
+
+-- A while loop of the form `while (condition) {prog}`
+while :: ExprCmp -> Prog -> State -> State
+while e p s = if valBool (expr (Cmp e) s) then while e p (run p s) else s
+
+-- A for loop of the form `for (declaration; condition; iterator) {prog}`
+for :: (Name, Expr) -> ExprCmp -> CmdIter -> Prog -> State -> State
+for (ref, e) cmp iter p s = 
+    let s' = set ref (expr e s) s
+        p' = (Iterate iter ref) : p
+    in while cmp p' s' 
 
 --
 -- FUNCTIONS
@@ -233,13 +253,16 @@ eqProg = run [Declare "1" (Lit (Int 10)),
 nullVarProg = run [Declare "i" (Get "null")] s0
 
 iterProg = run [Declare "i" (Lit (Double 0)),
-               Iterate (Inc "i"),
-               Iterate (Inc "i"), 
-               Iterate (Dec "i")] s0
+               Iterate Inc "i",
+               Iterate Inc "i", 
+               Iterate Dec "i"] s0
 
-whileProg = undefined
+whileProg = run [Declare "i" (Lit (Int 0)),
+                 While (Lt (Get "i") (Lit (Int 5))) 
+                     [Iterate Inc "i"]] s0
 
---For (Name, Expr) Expr Expr Prog
-forProg = undefined
-         
+forProg = run [Declare "y" (Lit (Int 10)),
+               For ("i", Lit (Int 0)) (Lt (Get "i") (Lit (Int 7))) Inc
+                   [Iterate Dec "y"]] s0
+
 funProg = undefined
