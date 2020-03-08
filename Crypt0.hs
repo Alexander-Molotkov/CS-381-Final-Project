@@ -21,22 +21,35 @@ type Name  = String
 data Cmd =
            Declare Name Expr
          | If Expr Prog Prog
-         | While Expr Prog
-         | For Cmd Expr Expr Prog
+         | Iterate CmdIter
+
+         | While ExprCmp Prog
+         | For (Name, Expr) ExprCmp CmdIter Prog
+
          | Return Expr
+
     deriving (Eq,Show)
+
+-- Subset of commands that iterate variables
+data CmdIter =
+               Inc Name
+             | Dec Name
+        deriving (Eq,Show)
 
 -- Expressions perform operations and return variables
 data Expr = 
             BinOp Op Expr Expr
           | Call Name [Expr]
-          | Lt Expr Expr
-          | Gt Expr Expr 
-          | Eq Expr Expr
-          | Inc Expr
-          | Dec Expr
-          | Const Var
+          | Lit Var
           | Get Name
+          | Cmp ExprCmp
+    deriving (Eq,Show)
+
+-- Subset of Expressions that compare two variables
+data ExprCmp =
+               Lt Expr Expr
+              | Gt Expr Expr 
+              | Eq Expr Expr
     deriving (Eq,Show)
 
 data Var = Int Int
@@ -65,57 +78,52 @@ run [] s = s
 cmd :: Cmd -> State -> State
 cmd command s = case command of
     -- Variable declaration
-    Declare ref e -> set ref (expr e s) s
+    Declare ref e     -> set ref (expr e s) s
     -- If statement
-    If e c1 c2    -> ifStatement e c1 c2 s
+    If e c1 c2        -> case expr e s of
+        (Bool b)  -> if b then run c1 s else run c2 s
     -- While loop 
-    While e c     -> whileLoop e c s
+    While e c         -> undefined
     -- For loop
-    For d c it p  -> forLoop d c it p s
+    For d c it p      -> undefined
+    -- Increment
+    Iterate (Inc ref) -> run (iter ref Add s) s
+    -- Decrement
+    Iterate (Dec ref) -> run (iter ref Sub s) s
 
 expr :: Expr -> State -> Var
 expr e s = case e of
     -- Addition
     BinOp o e1 e2 -> case (expr e1 s, expr e2 s) of
-        (v1, v2)             -> op o v1 v2
-    -- Less than check
-    Lt e1 e2  -> if isConst e1 && isConst e2
-        then case e1 of
-            Const (Int _)    -> 
-               if valInt e1 < valInt e2 then Bool True else Bool False
-            Const (Double _) -> 
-               if valDbl e1 < valDbl e2 then Bool True else Bool False
-        else expr (Lt (Const (expr e1 s)) (Const (expr e2 s))) s
-    -- Greater than check
-    Gt e1 e2  -> if isConst e1 && isConst e2
-        then case e1 of
-            Const (Int _)    -> 
-               if valInt e1 > valInt e2 then Bool True else Bool False
-            Const (Double _) -> 
-               if valDbl e1 > valDbl e2 then Bool True else Bool False
-        else expr (Gt (Const (expr e1 s)) (Const (expr e2 s))) s
-    -- Equality check
-    Eq e1 e2  -> if isConst e1 && isConst e2
-        then case e1 of
-            Const (Int _)    -> 
-               if valInt e1 == valInt e2 then Bool True else Bool False
-            Const (Double _) -> 
-               if valDbl e1 == valDbl e2 then Bool True else Bool False
-        else expr (Eq (Const (expr e1 s)) (Const (expr e2 s))) s
+        (v1, v2) -> op o v1 v2
+    -- Comparison Operators
+    (Cmp cmp)  -> case cmp of
+        -- Less than check
+        Lt e1 e2  -> case (expr e1 s, expr e2 s) of
+            (Int v1, Int v2)       -> Bool (v1 < v2)
+            (Double v1, Double v2) -> Bool (v1 < v2)
+        -- Greater than check
+        Gt e1 e2  -> case (expr e1 s, expr e2 s) of
+            (Int v1, Int v2)       -> Bool (v1 > v2)
+            (Double v1, Double v2) -> Bool (v1 > v2)
+        -- Equality check
+        Eq e1 e2  -> case (expr e1 s, expr e2 s) of
+            (Int v1, Int v2)       -> Bool (v1 == v2)
+            (Double v1, Double v2) -> Bool (v1 == v2)
+            (Bool v1, Bool v2)     -> Bool (v1 == v2)
+            (String v1, String v2) -> Bool (v1 == v2)
+
     -- Call function
-    Call ref es -> call (get ref s) es s
-    -- Constant
-    Const v   -> v
+    Call ref es -> undefined
+
+    -- Lit
+    Lit v   -> v
     -- Get existing variable
     Get ref   -> get ref s
 
 --
--- EXPRESSION HELPER FUNCTIONS
+-- Binary Operators
 --
-
-isConst :: Expr -> Bool
-isConst (Const _) = True
-isConst _         = False
 
 op :: Op -> Var -> Var -> Var
 op Add (Int s1) (Int s2)       = Int    (s1 + s2)
@@ -129,99 +137,39 @@ op Mul (Double s1) (Double s2) = Double (s1 * s2)
 op Div (Int s1) (Int s2)       = Int    (s1 `div` s2)
 op Div (Double s1) (Double s2) = Double (s1 / s2)
    
- 
-valInt :: Expr -> Int
-valInt (Const (Int x)) = x
-
-valDbl :: Expr -> Double
-valDbl (Const (Double x)) = x
-
-valStr :: Expr -> String
-valStr (Const (String x)) = x
-
-valBool :: Expr -> Bool
-valBool (Const (Bool x)) = x
-
 --
 -- VARIABLE MANIPULATION
 --
 
 -- Returns a variable by name
 get :: Name -> State -> Var 
-get key s = s ! key
--- TODO: Variable does not exist case
+get ref s = case Data.Map.lookup ref s of
+    (Just v) -> v
+    Nothing  -> error ("ERROR: variable not in scope: " ++ ref) 
 
 -- Changes the value of a variable on the stack
 set :: Name -> Var -> State -> State
 set key v s = (insert key v s)
 
--- Returns type of a variable
-typeOf :: Var -> State -> Type
-typeOf (Int _) s    = Int_ty
-typeOf (Bool _) s   = Bul_ty
-typeOf (Double _) s = Dbl_ty
-typeOf (String _) s = Str_ty
-
 -- Removes a variable from scope
 removeVar :: Name -> State -> State
 removeVar key s = delete key s
 
---
--- CONDITIONAL STATEMENTS
---
-
--- If statement
-ifStatement :: Expr -> Prog -> Prog -> State -> State
-ifStatement e c1 c2 s = case expr e s of
-    (Bool b)  -> if b then run c1 s else run c2 s
-    otherwise -> ifStatement (Const (expr e s)) c1 c2 s
+-- Increment and Decrement
+iter ::  Name -> Op -> State -> Prog
+iter ref o s = case get ref s of 
+    (Int i)    -> [Declare ref (BinOp o (Lit (Int i)) (Lit (Int 1)))]
+    (Double d) -> [Declare ref (BinOp o (Lit (Double d)) (Lit (Double 1)))]
 
 --
 -- FUNCTIONS
 --
 
--- Call a function
-call :: Var -> [Expr] -> State -> Var
-call (Function typ params body) passing s = 
-    doFunc body (fetchParams params passing s)
 
--- Gets the parameters that are passed by reference in a function call
--- Returns a state with just those parameters - the 'scope' of the function
-fetchParams :: [(Type, Name)] -> [Expr] -> State -> State
-fetchParams ((typ, ref):ps) (e:es) s =
-    (set ref (expr e s) empty) `union` (fetchParams ps es s)
-fetchParams [] [] s = s
-fetchParams _ [] _  = error "Error: Too many parameters passed to function."
-fetchParams [] _ _  = error "Error: Too few parameters passed to function."
-
--- Actually carries out the function body
-doFunc :: Prog -> State -> Var
-doFunc (c:cs) s = case c of
-    Return e  -> (expr e s) 
-    otherwise -> doFunc cs (cmd c s)
-doFunc [] _     = error "Error: No Return Statement from function"
 
 --
 -- SYNTACTIC SUGAR
 --
-
--- While Loop
--- NOTE: While loops do not create their own scope -> TODO?
-whileLoop :: Expr -> Prog -> State -> State
-whileLoop e c s = case expr e s of
-    (Bool b)  -> if b then whileLoop e c (run c s) else s
-    otherwise -> whileLoop (Const (expr e s)) c s
-
--- For Loop
--- NOTE: For loops do not create their own scope -> TODO?
--- For (declaration expression; condition expression; iterator expression) {prog}
-forLoop :: Cmd -> Expr -> Expr -> Prog -> State -> State
-forLoop decCmd condEx iterEx p s = 
-    let s' = cmd decCmd s
-        p' = case decCmd of 
-            (Declare ref ex) -> p ++ [Declare ref iterEx]
-    in whileLoop condEx p' s'
-  
 
 -- S0 is the empty state
 s0 :: State
@@ -243,52 +191,55 @@ s0 = empty
 --
 
 --run <program> s0
-addProg = [Declare "num" (Const (Int 23)), 
-           Declare "num2" (Const (Int 24)), 
-           Declare "Result" (BinOp Add (Get "num") (Get "num2"))]
+addProg = run [Declare "num" (Lit (Int 23)), 
+           Declare "num2" (Lit (Int 24)), 
+           Declare "Result" (BinOp Add (Get "num") (Get "num2"))] s0
          
-subProg = [Declare "num" (Const (Int 23)), 
-             Declare "num2" (Const (Int 24)), 
-             Declare "Result" (BinOp Sub (Get "num") (Get "num2"))]         
+subProg = run [Declare "num" (Lit (Int 23)), 
+             Declare "num2" (Lit (Int 24)), 
+             Declare "Result" (BinOp Sub (Get "num") (Get "num2"))] s0        
            
-mulProg = [Declare "num" (Const (Int 23)), 
-           Declare "num2" (Const (Int 24)), 
-           Declare "Result" (BinOp Mul (Get "num") (Get "num2"))]         
+mulProg = run [Declare "num" (Lit (Int 23)), 
+           Declare "num2" (Lit (Int 24)), 
+           Declare "Result" (BinOp Mul (Get "num") (Get "num2"))] s0      
 
-divProg = [Declare "num" (Const (Int 23)), 
-           Declare "num2" (Const (Int 24)), 
-           Declare "Result" (BinOp Div (Get "num") (Get "num2"))]         
+divProg = run [Declare "num" (Lit (Int 23)), 
+           Declare "num2" (Lit (Int 24)), 
+           Declare "Result" (BinOp Div (Get "num") (Get "num2"))] s0        
 
-
-
-ifProg = run [Declare "true" (Const (Bool True)), 
+ifProg = run [Declare "true" (Lit (Bool True)), 
               If (Get "true") 
-                  [(Declare "True" (Const (Int 1)))]
-                  [(Declare "False" (Const (Int 0)))]] s0
+                  [(Declare "True" (Lit (Int 1)))]
+                  [(Declare "False" (Lit (Int 0)))]] s0
 
-ltProg = run [Declare "lt" (Const (Int 5)), 
-              Declare "gt" (Const (Int 10)),
-              If ( Lt (Get "lt") (Get "gt"))
-                  [Declare "True" (Const (Bool True))] 
-                  [Declare "False" (Const (Bool False))]] s0
+ltProg = run [Declare "lt" (Lit (Int 5)), 
+              Declare "gt" (Lit (Int 10)),
+              If (Cmp (Lt (Get "lt") (Get "gt")))
+                 [Declare "True" (Lit (Bool True))] 
+                 [Declare "False" (Lit (Bool False))]] s0
 
-gtProg = run [Declare "lt" (Const (Int 5)), 
-              Declare "gt" (Const (Int 10)), 
-              If ( Gt (Get "gt") (Get "lt"))
-                  [Declare "True" (Const (Bool True))] 
-                  [Declare "False" (Const (Bool False))]] s0
+gtProg = run [Declare "lt" (Lit (Int 5)), 
+              Declare "gt" (Lit (Int 10)), 
+              If (Cmp (Gt (Get "gt") (Get "lt")))
+                 [Declare "True" (Lit (Bool True))] 
+                 [Declare "False" (Lit (Bool False))]] s0
 
-eqProg = run [Declare "1" (Const (Int 10)), 
-              Declare "2" (Const (Int 10)), 
-              If ( Eq (Get "1") (Get "2"))
-                  [Declare "True" (Const (Bool True))] 
-                  [Declare "False" (Const (Bool False))]] s0
+eqProg = run [Declare "1" (Lit (Int 10)), 
+              Declare "2" (Lit (Int 10)), 
+              If (Cmp (Eq (Get "1") (Get "2")))
+                 [Declare "True" (Lit (Bool True))] 
+                 [Declare "False" (Lit (Bool False))]] s0
 
-funProg = undefined
+nullVarProg = run [Declare "i" (Get "null")] s0
+
+iterProg = run [Declare "i" (Lit (Double 0)),
+               Iterate (Inc "i"),
+               Iterate (Inc "i"), 
+               Iterate (Dec "i")] s0
 
 whileProg = undefined
 
 --For (Name, Expr) Expr Expr Prog
-forProg = run [Declare "x" (Const (Int 20)),
-               For (Declare "i" (Const (Int 0))) (Lt (Get "i") (Const (Int 10))) (Inc (Get "i"))
-                   [Declare "x" (Dec (Get "x"))]] s0
+forProg = undefined
+         
+funProg = undefined
