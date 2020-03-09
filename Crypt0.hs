@@ -153,9 +153,9 @@ valBool :: Var -> Bool
 valBool (Bool b) = b
 
 varExists :: Name -> State -> Bool
-varExists ref s = case Data.map.lookup ref s of
+varExists ref s = case Data.Map.lookup ref s of
     (Just v) -> True
-    (Nothing -> False
+    Nothing  -> False
 
 --
 -- LOOPS
@@ -178,11 +178,29 @@ for (ref, e) cmp iter p s =
 -- FUNCTIONS
 --
 
+-- First create a state with the function's parameters and then run the function
+-- Our functions have static scoping and are pass by value
 call :: Name -> Params -> State -> Var
-call ref prms s = runFunc (Get ref s) prms s empty
+call ref prms s = case get ref s of
+    (Function _ fVars body) ->
+        let s' = getParams fVars prms s
+        in doFunc body s' 
 
-runFunc :: Var -> Params -> State -> State -> Var
-runFunc (Function rt fvars (c:cs)) prms Sglbl Sfunc =
+-- Actually run the function body - similar to the prog function
+doFunc :: Prog -> State -> Var
+doFunc (c:cs) s' = case c of 
+    Return e  -> expr e s'
+    otherwise -> doFunc cs (cmd c s')  
+doFunc [] s'= error "ERROR: No return statement in function body"
+
+-- Binds the parameters passed to the function to the function's expected variables
+-- This creates a sub-state with only the function's passed-in variables
+getParams :: [(Type, Name)] -> Params -> State -> State
+getParams (fv:fvs) (p:ps) s = case fv of
+    (_, ref) -> set ref (expr p s) empty `union` getParams fvs ps s
+getParams [] [] s       = s
+getParams [] (p:ps) s   = error "ERROR: Too many parameters passed to function"
+getParams (fv:fvs) [] s = error "ERROR: Too few parameters passed to function" 
 
 -- Function Type [(Type, Name)] Prog
 
@@ -268,4 +286,7 @@ forProg = run [Declare "y" (Lit (Int 10)),
                For ("i", Lit (Int 0)) (Lt (Get "i") (Lit (Int 7))) Inc
                    [Iterate Dec "y"]] s0
 
-funProg = undefined
+-- Function Type [(Type, Name)] Prog
+funProg = run [Declare "fun" (Lit (Function Int_ty [(Int_ty, "x")]
+                   [Return (BinOp Add (Get "x") (Lit (Int 3)))])),
+               Declare "result" (Call "fun" [(Lit (Int 5))])] s0
