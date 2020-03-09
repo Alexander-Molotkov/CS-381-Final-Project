@@ -62,8 +62,13 @@ data Type = Int_ty | Dbl_ty | Bul_ty | Str_ty | Fun_ty
 --
 
 run :: Prog -> State -> State
-run (c:cs) s = run cs (cmd c s)
-run [] s = s 
+run p s = 
+    let check = typeCheck p 
+    in if check then driver p s else s
+
+driver :: Prog -> State -> State
+driver (c:cs) s = driver cs (cmd c s)
+driver [] s = s 
 
 cmd :: Cmd -> State -> State
 cmd command s = case command of
@@ -71,7 +76,7 @@ cmd command s = case command of
     Declare ref e   -> set ref (expr e s) s
     -- If statement
     If e c1 c2      -> case expr e s of
-        (Bool b)  -> if b then run c1 s else run c2 s
+        (Bool b)        -> if b then run c1 s else run c2 s
     -- While loop 
     While e c       -> while e c s
     -- For loop
@@ -108,7 +113,14 @@ expr e s = case e of
     Get ref   -> get ref s
 
 --
--- Binary Operators
+-- TYPE CHECKING
+--
+
+typeCheck :: Prog -> Bool
+typeCheck _ = True
+
+--
+-- BINARY OPERATORS
 --
 
 op :: Op -> Var -> Var -> Var
