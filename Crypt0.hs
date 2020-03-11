@@ -19,18 +19,12 @@ type Params = [Expr]
 -- Commands change the program's state
 data Cmd = Declare Name Expr
          | If Expr Prog Prog
-         | Iterate CmdIter Name
          | While Expr Prog
-         | For (Name, Expr) Expr CmdIter Prog
-
          | Return Expr
 
     deriving (Eq,Show)
 
--- Subset of commands that iterate variables
-data CmdIter = Inc
-             | Dec
-        deriving (Eq,Show)
+--TODO: Express iteration and for loop as syntactic sugar - will ease type checking
 
 -- Expressions perform operations and return variables
 data Expr = BinOp Op Expr Expr
@@ -62,10 +56,10 @@ data Type = Int_ty | Dbl_ty | Bul_ty | Str_ty | Fun_ty
 -- SEMANTICS
 --
 
-run :: Prog -> State -> State
-run p s = 
-    let check = typeCheck p 
-    in if check then driver p s else s
+run :: Prog -> State -> (Either String State)
+run p s = case (typeCheck p []) of
+    (Just s)  -> Left s
+    (Nothing) -> Right (driver p s)
 
 driver :: Prog -> State -> State
 driver (c:cs) s = driver cs (cmd c s)
@@ -77,15 +71,9 @@ cmd command s = case command of
     Declare ref e   -> set ref (expr e s) s
     -- If statement
     If e c1 c2      -> case expr e s of
-        (B b)        -> if b then run c1 s else run c2 s
+        (B b)           -> if b then driver c1 s else driver c2 s
     -- While loop 
     While e c       -> while e c s
-    -- For loop
-    For d c it p    -> for d c it p s
-    -- Increment
-    Iterate Inc ref -> run (iter ref Add s) s
-    -- Decrement
-    Iterate Dec ref -> run (iter ref Sub s) s
 
 expr :: Expr -> State -> Var
 expr e s = case e of
@@ -117,8 +105,24 @@ expr e s = case e of
 -- TYPE CHECKING
 --
 
-typeCheck :: Prog -> Bool
-typeCheck _ = True
+-- Static type checking for each prog
+typeCheck :: Prog -> [(Name, Type)] -> maybe String
+-- QUESTION: Check repeated declares?
+typeCheck (c:cs) = case c of
+    (Declare ref e) -> undefined
+    (If e p1 p2)    -> undefined
+    (While e p)     -> undefined
+    (Return e)      -> undefined
+
+-- Finds the eventual type of an expression, returns nothing if there is a type error
+typeExpr :: Expr -> [(Name, Type)] -> maybe Type
+typeExpr (Lit v)           s = undefined
+typeExpr (Get ref)         s = undefined
+typeExpr (Lt e1 e2)        s = undefined 
+typeExpr (Gt e1 e2)        s = undefined
+typeExpr (Eq e1 e2)        s = undefined
+typeExpr (BinOp op e1 e2)  s = undefined
+typeExpr (Call ref (e:es)) s = undefined
 
 --
 -- BINARY OPERATORS
@@ -182,14 +186,10 @@ varExists ref s = case Data.Map.lookup ref s of
 
 -- A while loop of the form `while (condition) {prog}`
 while :: Expr -> Prog -> State -> State
-while e p s = if valBool (expr e s) then while e p (run p s) else s
+while e p s = if valBool (expr e s) then while e p (driver p s) else s
 
+-- TODO:
 -- A for loop of the form `for (declaration; condition; iterator) {prog}`
-for :: (Name, Expr) -> Expr -> CmdIter -> Prog -> State -> State
-for (ref, e) cmp iter p s = 
-    let s' = set ref (expr e s) s
-        p' = (Iterate iter ref) : p
-    in while cmp p' s' 
 
 --
 -- FUNCTIONS
@@ -290,20 +290,20 @@ eqProg = run [Declare "1" (Lit (I 10)),
 
 nullVarProg = run [Declare "i" (Get "null")] s0
 
-iterProg = run [Declare "i" (Lit (D 0)),
-               Iterate Inc "i",
-               Iterate Inc "i", 
-               Iterate Dec "i"] s0
+--iterProg = run [Declare "i" (Lit (D 0)),
+--             Iterate Inc "i",
+--             Iterate Inc "i", 
+--             Iterate Dec "i"] s0
 
-whileProg = run [Declare "i" (Lit (I 0)),
-                 While (Lt (Get "i") (Lit (I 5))) 
-                     [Iterate Inc "i"]] s0
+--whileProg = run [Declare "i" (Lit (I 0)),
+--                 While (Lt (Get "i") (Lit (I 5))) 
+                     --[Iterate Inc "i"]] s0
 
-forProg = run [Declare "y" (Lit (I 10)),
-               For ("i", Lit (I 0)) (Lt (Get "i") (Lit (I 7))) Inc
-                   [Iterate Dec "y"]] s0
+--forProg = run [Declare "y" (Lit (I 10)),
+--               For ("i", Lit (I 0)) (Lt (Get "i") (Lit (I 7))) Inc
+                   --[Iterate Dec "y"]] s0
 
 -- Function Type [(Type, Name)] Prog
-funProg = run [Declare "fun" (Lit (F Int_ty [(Int_ty, "x")]
-                   [Return (BinOp Add (Get "x") (Lit (I 3)))])),
-               Declare "result" (Call "fun" [(Lit (I 5))])] s0
+--funProg = run [Declare "fun" (Lit (F Int_ty [(Int_ty, "x")]
+--                   [Return (BinOp Add (Get "x") (Lit (I 3)))])),
+--               Declare "result" (Call "fun" [(Lit (I 5))])] s0
