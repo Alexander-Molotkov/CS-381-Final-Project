@@ -57,7 +57,7 @@ data Type = Int_ty | Dbl_ty | Bul_ty | Str_ty | Fun_ty
 --
 
 run :: Prog -> State -> (Either String State)
-run p s = case (typeCheck p []) of
+run p s = case (typeCheck p empty) of
     (Just s)  -> Left s
     (Nothing) -> Right (driver p s)
 
@@ -107,22 +107,56 @@ expr e s = case e of
 
 -- Static type checking for each prog
 -- QUESTION: Check repeated declares?
-typeCheck :: Prog -> [(Name, Type)] -> Maybe String
+typeCheck :: Prog -> (Map Name Type) -> Maybe String
 typeCheck [] s = Nothing
 typeCheck (c:cs) s = case c of
-    (Declare ref e) -> undefined
-    (If e p1 p2)    -> undefined
+    -- Variable Declaration
+    (Declare ref e) -> case typeExpr e s of
+        (Just v) -> typeCheck cs (insert ref v s)
+        Nothing  -> tError e
+    -- If statement
+    -- QUESTION: Variables declared inside if statement - how to type check
+    (If e p1 p2)    -> if ((typeExpr e s) == (Just Bul_ty)) then
+            case (typeCheck p1 s, typeCheck p2 s) of
+                (Nothing, Nothing) -> typeCheck cs s
+                (Just s, Nothing)  -> Just s
+                (Nothing, Just s)  -> Just s
+                (Just s1, Just s2) -> Just (s1 ++ ", " ++ s2)
+        else tError e
+    -- While loop
     (While e p)     -> undefined
+        if ((typeExpr e s) == (Just Bul_ty))
+        then case (typeCheck p s) of
+            Nothing  -> typeCheck cs s
+            (Just s) -> Just s
+        else tError e
+    -- QUESTION: How to typecheck functions
     (Return e)      -> undefined
 
 -- Finds the eventual type of an expression, returns nothing if there is a type error
-typeExpr :: Expr -> [(Name, Type)] -> maybe Type
-typeExpr (Lit v)           s = undefined
-typeExpr (Get ref)         s = undefined
-typeExpr (Lt e1 e2)        s = undefined 
-typeExpr (Gt e1 e2)        s = undefined
-typeExpr (Eq e1 e2)        s = undefined
-typeExpr (BinOp op e1 e2)  s = undefined
+typeExpr :: Expr -> (Map Name Type) -> Maybe Type
+typeExpr (Lit v)           s = Just (typeOf v)
+typeExpr (Get ref)         s = Data.Map.lookup ref s
+typeExpr (Lt e1 e2)        s = case (typeExpr e1, typeExpr e2) of
+    (Just Int_ty, Just Int_ty) -> Just Int_ty
+    (Just Dbl_ty, Just Dbl_ty) -> Just Dbl_ty
+    otherwise                  -> Nothing
+typeExpr (Gt e1 e2)        s = case (typeExpr e1, typeExpr e2) of
+    (Just Int_ty, Just Int_ty) -> Just Int_ty
+    (Just Dbl_ty, Just Dbl_ty) -> Just Dbl_ty
+    otherwise                  -> Nothing
+typeExpr (Eq e1 e2)        s = case (typeExpr e1, typeExpr e2) of
+    (Just Int_ty, Just Int_ty) -> Just Int_ty
+    (Just Dbl_ty, Just Dbl_ty) -> Just Dbl_ty
+    (Just Str_ty, Just Str_ty) -> Just Str_ty
+    (Just Bul_ty, Just Bul_ty) -> Just Bul_ty
+    otherwise                  -> Nothing
+
+typeExpr (BinOp Add e1 e2)  s = undefined
+typeExpr (BinOp Sub e1 e2)  s = undefined
+typeExpr (BinOp Mul e1 e2)  s = undefined
+typeExpr (BinOp Div e1 e2)  s = undefined
+
 typeExpr (Call ref (e:es)) s = undefined
 
 -- Gets type of a variable
@@ -132,6 +166,11 @@ typeOf (Dbl _)     = Dbl_ty
 typeOf (Bul _)     = Bul_ty
 typeOf (Str _)     = Str_ty
 typeOf (Fun _ _ _) = Fun_ty
+
+--QUESTION: tError more descriptive?
+-- Type error message
+tError :: Expr -> Maybe String
+tError e = Just ("ERROR: Type error in expression: " ++ (show e))
 
 --
 -- BINARY OPERATORS
