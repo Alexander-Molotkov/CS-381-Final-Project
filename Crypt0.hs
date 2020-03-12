@@ -21,10 +21,7 @@ data Cmd = Declare Name Expr
          | If Expr Prog Prog
          | While Expr Prog
          | Return Expr
-
     deriving (Eq,Show)
-
---TODO: Express iteration and for loop as syntactic sugar - will ease type checking
 
 -- Expressions perform operations and return variables
 data Expr = BinOp Op Expr Expr
@@ -106,7 +103,6 @@ expr e s = case e of
 --
 
 -- Static type checking for each prog
--- QUESTION: Check repeated declares?
 typeCheck :: Prog -> (Map Name Type) -> Maybe String
 typeCheck [] s = Nothing
 typeCheck (c:cs) s = case c of
@@ -116,7 +112,7 @@ typeCheck (c:cs) s = case c of
         Nothing  -> tError e
     -- If statement
     -- QUESTION: Variables declared inside if statement - how to type check
-    (If e p1 p2)    -> if ((typeExpr e s) == (Just Bul_ty)) then
+    (If e p1 p2)  -> if ((typeExpr e s) == (Just Bul_ty)) then
             case (typeCheck p1 s, typeCheck p2 s) of
                 (Nothing, Nothing) -> typeCheck cs s
                 (Just s, Nothing)  -> Just s
@@ -124,39 +120,56 @@ typeCheck (c:cs) s = case c of
                 (Just s1, Just s2) -> Just (s1 ++ ", " ++ s2)
         else tError e
     -- While loop
-    (While e p)     -> undefined
-        if ((typeExpr e s) == (Just Bul_ty))
+    (While e p)   -> if ((typeExpr e s) == (Just Bul_ty))
         then case (typeCheck p s) of
             Nothing  -> typeCheck cs s
             (Just s) -> Just s
         else tError e
-    -- QUESTION: How to typecheck functions
+
+
+    -- Return statement
     (Return e)      -> undefined
 
 -- Finds the eventual type of an expression, returns nothing if there is a type error
 typeExpr :: Expr -> (Map Name Type) -> Maybe Type
 typeExpr (Lit v)           s = Just (typeOf v)
 typeExpr (Get ref)         s = Data.Map.lookup ref s
-typeExpr (Lt e1 e2)        s = case (typeExpr e1, typeExpr e2) of
-    (Just Int_ty, Just Int_ty) -> Just Int_ty
-    (Just Dbl_ty, Just Dbl_ty) -> Just Dbl_ty
+typeExpr (Lt e1 e2)        s = case (typeExpr e1 s, typeExpr e2 s) of
+    (Just Int_ty, Just Int_ty) -> Just Bul_ty
+    (Just Dbl_ty, Just Dbl_ty) -> Just Bul_ty
     otherwise                  -> Nothing
-typeExpr (Gt e1 e2)        s = case (typeExpr e1, typeExpr e2) of
-    (Just Int_ty, Just Int_ty) -> Just Int_ty
-    (Just Dbl_ty, Just Dbl_ty) -> Just Dbl_ty
+typeExpr (Gt e1 e2)        s = case (typeExpr e1 s, typeExpr e2 s) of
+    (Just Int_ty, Just Int_ty) -> Just Bul_ty
+    (Just Dbl_ty, Just Dbl_ty) -> Just Bul_ty
     otherwise                  -> Nothing
-typeExpr (Eq e1 e2)        s = case (typeExpr e1, typeExpr e2) of
-    (Just Int_ty, Just Int_ty) -> Just Int_ty
-    (Just Dbl_ty, Just Dbl_ty) -> Just Dbl_ty
-    (Just Str_ty, Just Str_ty) -> Just Str_ty
+typeExpr (Eq e1 e2)        s = case (typeExpr e1 s, typeExpr e2 s) of
+    (Just Int_ty, Just Int_ty) -> Just Bul_ty
+    (Just Dbl_ty, Just Dbl_ty) -> Just Bul_ty
+    (Just Str_ty, Just Str_ty) -> Just Bul_ty
     (Just Bul_ty, Just Bul_ty) -> Just Bul_ty
     otherwise                  -> Nothing
+typeExpr (BinOp Add e1 e2)  s = case (typeExpr e1 s, typeExpr e2 s) of
+    (Just Int_ty, Just Int_ty) -> Just Int_ty
+    (Just Dbl_ty, Just Dbl_ty) -> Just Dbl_ty
+    (Just Int_ty, Just Dbl_ty) -> Just Dbl_ty
+    (Just Dbl_ty, Just Int_ty) -> Just Dbl_ty
+    (Just Str_ty, Just Str_ty) -> Just Str_ty
+    otherwise                  -> Nothing
+typeExpr (BinOp Sub e1 e2)  s = case (typeExpr e1 s, typeExpr e2 s) of
+    (Just Int_ty, Just Int_ty) -> Just Int_ty
+    (Just Dbl_ty, Just Dbl_ty) -> Just Dbl_ty
+ --   (Just Str_ty, Just Str_ty) -> Just Str_ty
+    otherwise                  -> Nothing
+typeExpr (BinOp Mul e1 e2)  s = case (typeExpr e1 s, typeExpr e2 s) of
+    (Just Int_ty, Just Int_ty) -> Just Int_ty
+    (Just Dbl_ty, Just Dbl_ty) -> Just Dbl_ty
+    otherwise                  -> Nothing
+typeExpr (BinOp Div e1 e2)  s = case (typeExpr e1 s, typeExpr e2 s) of
+    (Just Int_ty, Just Int_ty) -> Just Int_ty
+    (Just Dbl_ty, Just Dbl_ty) -> Just Dbl_ty
+    otherwise                  -> Nothing
 
-typeExpr (BinOp Add e1 e2)  s = undefined
-typeExpr (BinOp Sub e1 e2)  s = undefined
-typeExpr (BinOp Mul e1 e2)  s = undefined
-typeExpr (BinOp Div e1 e2)  s = undefined
-
+--TODO
 typeExpr (Call ref (e:es)) s = undefined
 
 -- Gets type of a variable
@@ -167,7 +180,6 @@ typeOf (Bul _)     = Bul_ty
 typeOf (Str _)     = Str_ty
 typeOf (Fun _ _ _) = Fun_ty
 
---QUESTION: tError more descriptive?
 -- Type error message
 tError :: Expr -> Maybe String
 tError e = Just ("ERROR: Type error in expression: " ++ (show e))
@@ -180,6 +192,8 @@ op :: Op -> Var -> Var -> Var
 -- Addition
 op Add (Int s1) (Int s2) = Int (s1 + s2)
 op Add (Dbl s1) (Dbl s2) = Dbl (s1 + s2)
+op Add (Int s1) (Dbl s2) = Dbl ((fromIntegral s1) + s2)
+op Add (Dbl s1) (Int s2) = Dbl (s1 + (fromIntegral s2))
 op Add (Str s1) (Str s2) = Str (s1 ++ s2)
 -- Subtraction
 op Sub (Int s1) (Int s2) = Int (s1 - s2)
@@ -211,33 +225,18 @@ set key v s = (insert key v s)
 removeVar :: Name -> State -> State
 removeVar key s = delete key s
 
--- Increment and Decrement
-iter ::  Name -> Op -> State -> Prog
-iter ref o s = case get ref s of 
-    (Int i) -> [Declare ref (BinOp o (Lit (Int i)) (Lit (Int 1)))]
-    (Dbl d) -> [Declare ref (BinOp o (Lit (Dbl d)) (Lit (Dbl 1)))]
-
 -- Pulls the value out of a bool variable
 valBool :: Var -> Bool
 valBool (Bul b) = b
-
-varExists :: Name -> State -> Bool
-varExists ref s = case Data.Map.lookup ref s of
-    (Just v) -> True
-    Nothing  -> False
 
 --
 -- LOOPS
 --
 
--- NOTE: loops are part of the same function scope they are run in
-
+-- NOTE: loops have no inherent scope
 -- A while loop of the form `while (condition) {prog}`
 while :: Expr -> Prog -> State -> State
 while e p s = if valBool (expr e s) then while e p (driver p s) else s
-
--- TODO:
--- A for loop of the form `for (declaration; condition; iterator) {prog}`
 
 --
 -- FUNCTIONS
@@ -276,6 +275,20 @@ getParams (fv:fvs) [] s = error "ERROR: Too few parameters passed to function"
 -- S0 is the empty state
 s0 :: State
 s0 = empty
+
+-- for loop: (declaration; condition; expression) {body}
+for :: Name -> Expr -> Expr -> Expr -> Prog -> Prog
+for ref dec con e body =
+    [Declare ref dec, 
+    While con ((Declare ref e):body)]
+
+-- Increments a number
+increment :: Name -> Cmd
+increment ref = Declare ref (BinOp Add (Get ref) (Lit (Int 1)))
+
+-- Decrements a number
+decrement :: Name -> Cmd
+decrement ref = Declare ref (BinOp Add (Get ref) (Lit (Int 1)))
 
 --
 -- DOCTESTS
@@ -338,18 +351,22 @@ eqProg = run [Declare "1" (Lit (Int 10)),
 
 nullVarProg = run [Declare "i" (Get "null")] s0
 
---iterProg = run [Declare "i" (Lit (Dbl 0)),
---             Iterate Inc "i",
---             Iterate Inc "i", 
---             Iterate Dec "i"] s0
+typeErrProg = run [Declare "int" (Lit (Int 10)),
+                   Declare "Bul" (Lit (Bul True)),
+                   Declare "result" (BinOp Add (Get "int") (Get "Bul"))] s0
 
---whileProg = run [Declare "i" (Lit (Int 0)),
---                 While (Lt (Get "i") (Lit (Int 5))) 
-                     --[Iterate Inc "i"]] s0
+iterProg = run [Declare "i" (Lit (Dbl 0)),
+             increment "i",
+             increment "i", 
+             decrement "i"] s0
 
---forProg = run [Declare "y" (Lit (Int 10)),
---               For ("i", Lit (Int 0)) (Lt (Get "i") (Lit (Int 7))) Inc
-                   --[Iterate Dec "y"]] s0
+whileProg = run [Declare "i" (Lit (Dbl 0)),
+                 While (Lt (Get "i") (Lit (Dbl 5))) 
+                     [increment "i"]] s0
+
+forProg = undefined
+         
+        
 
 -- Function Type [(Type, Name)] Prog
 --funProg = run [Declare "fun" (Lit (Fun Int_ty [(Int_ty, "x")]
