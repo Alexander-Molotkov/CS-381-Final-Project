@@ -65,12 +65,14 @@ driver [] s = s
 cmd :: Cmd -> State -> State
 cmd command s = case command of
     -- Variable declaration
-    Declare ref e   -> set ref (expr e s) s
+    Declare ref e -> set ref (expr e s) s
     -- If statement
-    If e c1 c2      -> case expr e s of
-        (Bul b)           -> if b then driver c1 s else driver c2 s
+    If e c1 c2    -> case expr e s of
+        (Bul b)       -> if b then driver c1 s else driver c2 s
     -- While loop 
-    While e c       -> while e c s
+    While e c     -> while e c s
+    -- Return (unexpected)
+    Return e      -> error "Unexpected return statement"
 
 expr :: Expr -> State -> Var
 expr e s = case e of
@@ -126,8 +128,6 @@ typeCheck (c:cs) s = case c of
             Nothing  -> typeCheck cs s
             (Just s) -> Just s
         else tError e
-
-
     -- Return statement
     (Return e)      -> undefined
 
@@ -171,7 +171,12 @@ typeExpr (BinOp Div e1 e2)  s = case (typeExpr e1 s, typeExpr e2 s) of
     otherwise                  -> Nothing
 
 --TODO
-typeExpr (Call ref (e:es)) s = undefined
+--typeExpr (Call ref es) s = typeFunction (get ref s) es s
+
+-- | Fun Type [(Type, Name)] Prog
+
+typeFunction :: Var -> [Expr] -> State -> Maybe Type
+typeFunction (Fun reTy prms p) args s = undefined 
 
 -- Gets type of a variable
 typeOf :: Var -> Type
@@ -378,3 +383,4 @@ forProg = run (for "i" (Lit (Int 0))
 funProg = run [Declare "fun" (Lit (Fun Int_ty [(Int_ty, "x")]
                    [Return (BinOp Add (Get "x") (Lit (Int 3)))])),
                Declare "result" (Call "fun" [(Lit (Int 5))])] s0
+
