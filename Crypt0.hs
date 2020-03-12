@@ -1,6 +1,7 @@
 module Crypt0 where
 
 import Data.Map 
+import Data.List(isPrefixOf)
 
 -- State of program is the value of all of the variables
 -- Semantic domain = State -> State = (Map Name Var) -> (Map Name Var)
@@ -37,7 +38,6 @@ data Var = Int Int
          | Dbl Double
          | Bul Bool
          | Str String
-         -- Function
          | Fun Type [(Type, Name)] Prog
     deriving (Eq,Show)
 
@@ -112,6 +112,7 @@ typeCheck (c:cs) s = case c of
         Nothing  -> tError e
     -- If statement
     -- QUESTION: Variables declared inside if statement - how to type check
+    -- TODO: Type check in if statement
     (If e p1 p2)  -> if ((typeExpr e s) == (Just Bul_ty)) then
             case (typeCheck p1 s, typeCheck p2 s) of
                 (Nothing, Nothing) -> typeCheck cs s
@@ -158,7 +159,7 @@ typeExpr (BinOp Add e1 e2)  s = case (typeExpr e1 s, typeExpr e2 s) of
 typeExpr (BinOp Sub e1 e2)  s = case (typeExpr e1 s, typeExpr e2 s) of
     (Just Int_ty, Just Int_ty) -> Just Int_ty
     (Just Dbl_ty, Just Dbl_ty) -> Just Dbl_ty
- --   (Just Str_ty, Just Str_ty) -> Just Str_ty
+    (Just Str_ty, Just Str_ty) -> Just Str_ty
     otherwise                  -> Nothing
 typeExpr (BinOp Mul e1 e2)  s = case (typeExpr e1 s, typeExpr e2 s) of
     (Just Int_ty, Just Int_ty) -> Just Int_ty
@@ -198,7 +199,7 @@ op Add (Str s1) (Str s2) = Str (s1 ++ s2)
 -- Subtraction
 op Sub (Int s1) (Int s2) = Int (s1 - s2)
 op Sub (Dbl s1) (Dbl s2) = Dbl (s1 - s2)
--- TODO: op Sub (String s1) (String s2) = String (s1 -- s2)
+op Sub (Str s1) (Str s2) = Str (strSub s1 s2)
 -- Multiplication
 op Mul (Int s1) (Int s2) = Int (s1 * s2)
 op Mul (Dbl s1) (Dbl s2) = Dbl (s1 * s2)
@@ -207,6 +208,15 @@ op Div (Int s1) (Int s2) = if s2 /= 0
     then Int (s1 `div` s2) else error "ERROR: attempt to divide by 0"
 op Div (Dbl s1) (Dbl s2) = if s2 /= 0 
     then Dbl (s1 / s2) else error "ERROR: attempt to divide by 0"
+
+-- Subtracts a string from another string
+strSub :: String -> String -> String
+strSub [] s2     = []
+strSub (c:cs) s2 = case s2 `isPrefixOf` (c:cs) of
+    True  -> strSub (Prelude.drop (length s2) (c:cs)) s2
+    False -> c:(strSub cs s2)
+
+
 --
 -- VARIABLE MANIPULATION
 --
@@ -291,28 +301,24 @@ decrement :: Name -> Cmd
 decrement ref = Declare ref (BinOp Add (Get ref) (Lit (Int 1)))
 
 --
--- DOCTESTS
+-- TESTING
 --
 
--- TODO testing for:
--- | Add together two vars
--- | Subtract two vars
--- | Muliplies two vars
--- | Divide two vars
--- | If statement
-
---
--- MANUAL TESTING
---
-
---run <program> s0
 addProg = run [Declare "num" (Lit (Int 23)), 
                Declare "num2" (Lit (Int 24)), 
                Declare "Result" (BinOp Add (Get "num") (Get "num2"))] s0
+
+addStrProg = run [Declare "str" (Lit (Str "asd")), 
+               Declare "str2" (Lit (Str "123")), 
+               Declare "Result" (BinOp Add (Get "str") (Get "str2"))] s0
          
 subProg = run [Declare "num" (Lit (Int 23)), 
                Declare "num2" (Lit (Int 24)), 
                Declare "Result" (BinOp Sub (Get "num") (Get "num2"))] s0        
+
+subStrProg = run [Declare "str" (Lit (Str "asdqwe")), 
+               Declare "str2" (Lit (Str "dq")), 
+               Declare "Result" (BinOp Sub (Get "str") (Get "str2"))] s0
            
 mulProg = run [Declare "num" (Lit (Int 23)), 
                Declare "num2" (Lit (Int 24)), 
@@ -362,13 +368,13 @@ iterProg = run [Declare "i" (Lit (Dbl 0)),
 
 whileProg = run [Declare "i" (Lit (Dbl 0)),
                  While (Lt (Get "i") (Lit (Dbl 5))) 
-                     [increment "i"]] s0
+                     [(increment "i")]] s0
 
-forProg = undefined
+forProg = run (for "i" (Lit (Int 0)) 
+                  (Lt (Get "i") (Lit (Int 10)))
+                  (BinOp Add (Get "i") (Lit (Int 1))) 
+                  [Declare "z" (Lit (Dbl 0))]) s0
          
-        
-
--- Function Type [(Type, Name)] Prog
---funProg = run [Declare "fun" (Lit (Fun Int_ty [(Int_ty, "x")]
---                   [Return (BinOp Add (Get "x") (Lit (Int 3)))])),
---               Declare "result" (Call "fun" [(Lit (Int 5))])] s0
+funProg = run [Declare "fun" (Lit (Fun Int_ty [(Int_ty, "x")]
+                   [Return (BinOp Add (Get "x") (Lit (Int 3)))])),
+               Declare "result" (Call "fun" [(Lit (Int 5))])] s0
