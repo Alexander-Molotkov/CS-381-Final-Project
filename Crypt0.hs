@@ -11,11 +11,11 @@ import Data.List(isPrefixOf)
 -- Semantic domain = State -> State = (Map Name Var) -> (Map Name Var)
 
 type State  = Map Name Var
-type Prog   = [Cmd]
+type Prog   = [Smt]
 type Name   = String
 
 -- Commands change the program's state
-data Cmd = Declare Name Expr
+data Smt = Declare Name Expr
          | If Expr Prog Prog
          | While Expr Prog
          | Return Expr
@@ -58,12 +58,12 @@ run p s = case (typeCheck p empty) of
 
 -- Actually handles the running of a program
 driver :: Prog -> State -> State
-driver (c:cs) s = driver cs (cmd c s)
+driver (c:cs) s = driver cs (smt c s)
 driver [] s = s 
 
 -- Modifies state according to commands
-cmd :: Cmd -> State -> State
-cmd command s = case command of
+smt :: Smt -> State -> State
+smt command s = case command of
     -- Variable declaration
     Declare ref e -> set ref (expr e s) s
     -- If statement
@@ -105,7 +105,7 @@ expr e s = case e of
 --                                TYPE CHECKING
 -- =============================================================================
 
--- Static type checking for each cmd, returns a string if there is an error
+-- Static type checking for each smt, returns a string if there is an error
 typeCheck :: Prog -> (Map Name Type) -> Maybe String
 typeCheck [] s = Nothing
 typeCheck (c:cs) s = case c of
@@ -113,7 +113,7 @@ typeCheck (c:cs) s = case c of
     (Declare ref e) -> case typeExpr e s of
         (Just Fun_ty)   -> case typeFunc e of
             (Just ty)       -> typeCheck cs (insert ref ty s)
-            Nothing         -> Just ("Error in Function Declaration: "++show e)
+            Nothing         -> Just ("TError in Function Declaration: "++show e)
         (Just ty)    -> typeCheck cs (insert ref ty s)
         Nothing     -> tError e
     -- If statement
@@ -165,6 +165,8 @@ typeExpr (BinOp Sub e1 e2) s = case (typeExpr e1 s, typeExpr e2 s) of
     (Just Int_ty, Just Int_ty) -> Just Int_ty
     (Just Dbl_ty, Just Dbl_ty) -> Just Dbl_ty
     (Just Str_ty, Just Str_ty) -> Just Str_ty
+    (Just Int_ty, Just Dbl_ty) -> Just Dbl_ty
+    (Just Dbl_ty, Just Int_ty) -> Just Dbl_ty
     otherwise                  -> Nothing
 typeExpr (BinOp Mul e1 e2) s = case (typeExpr e1 s, typeExpr e2 s) of
     (Just Int_ty, Just Int_ty) -> Just Int_ty
@@ -230,6 +232,8 @@ binOp Add (Str s1) (Str s2) = Str (s1 ++ s2)
 -- Subtraction
 binOp Sub (Int s1) (Int s2) = Int (s1 - s2)
 binOp Sub (Dbl s1) (Dbl s2) = Dbl (s1 - s2)
+binOp Sub (Int s1) (Dbl s2) = Dbl ((fromIntegral s1) - s2)
+binOp Sub (Dbl s1) (Int s2) = Dbl (s1 - (fromIntegral s2))
 binOp Sub (Str s1) (Str s2) = Str (strSub s1 s2)
 -- Multiplication
 binOp Mul (Int s1) (Int s2) = Int (s1 * s2)
@@ -294,10 +298,10 @@ call ref prms s = case get ref s of
 doFunc :: Prog -> State -> Var
 doFunc (c:cs) s' = case c of 
     Return e  -> expr e s'
-    otherwise -> doFunc cs (cmd c s')  
+    otherwise -> doFunc cs (smt c s')  
 doFunc [] s'= error "ERROR: No return statement in function body"
 
--- Binds the parameters passed to the function to the function's expected variables
+-- Binds the params passed to the function to the function's expected variables
 -- This creates a sub-state with only the function's passed-in variables
 getParams :: [(Type, Name)] -> [Expr] -> State -> State
 getParams (fv:fvs) (p:ps) s = case fv of
@@ -323,12 +327,12 @@ for ref dec con e body =
     While con ((Declare ref e):body)]
 
 -- Increments a number
-increment :: Name -> Cmd
+increment :: Name -> Smt
 increment ref = Declare ref (BinOp Add (Get ref) (Lit (Int 1)))
 
 -- Decrements a number
-decrement :: Name -> Cmd
-decrement ref = Declare ref (BinOp Add (Get ref) (Lit (Int 1)))
+decrement :: Name -> Smt
+decrement ref = Declare ref (BinOp Sub (Get ref) (Lit (Int 1)))
 
 -- =============================================================================
 --                         LIBRARY-LEVEL DEFINITIONS
@@ -340,71 +344,28 @@ decrement ref = Declare ref (BinOp Add (Get ref) (Lit (Int 1)))
 --                                EXAMPLES
 -- =============================================================================
 
-addProg = run [Declare "num" (Lit (Int 23)), 
+-- Good example programs:
+
+binOpProg = run [Declare "num" (Lit (Int 23)), 
                Declare "num2" (Lit (Int 24)), 
-               Declare "Result" (BinOp Add (Get "num") (Get "num2"))] s0
+               Declare "Result" (BinOp Add (Get "num") (Get "num2")),
+               Declare "Result" (BinOp Sub (Get "Result") (Get "num2")),
+               Declare "Result" (BinOp Mul (Get "Result") (Get "num2")),
+               Declare "Result" (BinOp Div (Get "Result") (Get "num2"))] s0
 
 addStrProg = run [Declare "str" (Lit (Str "asd")), 
                Declare "str2" (Lit (Str "123")), 
                Declare "Result" (BinOp Add (Get "str") (Get "str2"))] s0
          
-subProg = run [Declare "num" (Lit (Int 23)), 
-               Declare "num2" (Lit (Int 24)), 
-               Declare "Result" (BinOp Sub (Get "num") (Get "num2"))] s0        
-
 subStrProg = run [Declare "str" (Lit (Str "asdqwe")), 
                Declare "str2" (Lit (Str "dq")), 
                Declare "Result" (BinOp Sub (Get "str") (Get "str2"))] s0
            
-mulProg = run [Declare "num" (Lit (Int 23)), 
-               Declare "num2" (Lit (Int 24)), 
-               Declare "Result" (BinOp Mul (Get "num") (Get "num2"))] s0      
-
-divProg = run [Declare "num" (Lit (Int 23)), 
-               Declare "num2" (Lit (Int 24)), 
-               Declare "Result" (BinOp Div (Get "num") (Get "num2"))] s0        
-
-divZeroProg = run [Declare "num" (Lit (Int 23)), 
-                   Declare "num2" (Lit (Int 0)), 
-                   Declare "Result" (BinOp Div (Get "num") (Get "num2"))] s0        
-
-ifProg = run [Declare "true" (Lit (Bul True)), 
-              If (Get "true") 
-                  [(Declare "True" (Lit (Int 1)))]
-                  [(Declare "False" (Lit (Int 0)))]] s0
-
-ltProg = run [Declare "lt" (Lit (Int 5)), 
-              Declare "gt" (Lit (Int 10)),
-              If (Lt (Get "lt") (Get "gt"))
-                 [Declare "True" (Lit (Bul True))] 
-                 [Declare "False" (Lit (Bul False))]] s0
-
-gtProg = run [Declare "lt" (Lit (Int 5)), 
-              Declare "gt" (Lit (Int 10)), 
-              If (Gt (Get "gt") (Get "lt"))
-                 [Declare "True" (Lit (Bul True))] 
-                 [Declare "False" (Lit (Bul False))]] s0
-
-eqProg = run [Declare "1" (Lit (Int 10)), 
-              Declare "2" (Lit (Int 10)), 
-              If (Eq (Get "1") (Get "2"))
-                 [Declare "True" (Lit (Bul True))] 
-                 [Declare "False" (Lit (Bul False))]] s0
-
-nullVarProg = run [Declare "i" (Get "null")] s0
-
-typeErrProg = run [Declare "int" (Lit (Int 10)),
-                   Declare "Bul" (Lit (Bul True)),
-                   Declare "result" (BinOp Add (Get "int") (Get "Bul"))] s0
 
 iterProg = run [Declare "i" (Lit (Dbl 0)),
              increment "i",
              increment "i", 
              decrement "i"] s0
-
-whileProg = run [Declare "i" (Lit (Dbl 0)),
-                 While (Lt (Get "i") (Lit (Dbl 5))) 
-                     [(increment "i")]] s0
 
 forProg = run (for "i" (Lit (Int 0)) 
                   (Lt (Get "i") (Lit (Int 10)))
@@ -413,5 +374,21 @@ forProg = run (for "i" (Lit (Int 0))
          
 funProg = run [Declare "fun" (Lit (Fun Int_ty [(Int_ty, "x")]
                    [Return (BinOp Add (Get "x") (Lit (Int 3)))])),
+               Declare "result" (Call "fun" [(Lit (Int 5))])] s0
+
+-- Bad example programs:
+
+divZeroProg = run [Declare "num" (Lit (Int 23)), 
+                   Declare "num2" (Lit (Int 0)), 
+                   Declare "Result" (BinOp Div (Get "num") (Get "num2"))] s0        
+
+nullVarProg = run [Declare "i" (Get "null")] s0
+
+typeErrProg = run [Declare "int" (Lit (Int 10)),
+                   Declare "Bul" (Lit (Bul True)),
+                   Declare "result" (BinOp Add (Get "int") (Get "Bul"))] s0
+
+funTerrorProg = run [Declare "fun" (Lit (Fun Int_ty [(Int_ty, "x")]
+                   [Return (BinOp Add (Get "x") (Lit (Dbl 3)))])),
                Declare "result" (Call "fun" [(Lit (Int 5))])] s0
 
