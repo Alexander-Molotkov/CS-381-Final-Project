@@ -78,7 +78,7 @@ expr :: Expr -> State -> Var
 expr e s = case e of
     -- Addition
     BinOp o e1 e2 -> case (expr e1 s, expr e2 s) of
-        (v1, v2) -> op o v1 v2
+        (v1, v2) -> binOp o v1 v2
     -- Less than check
     Lt e1 e2  -> case (expr e1 s, expr e2 s) of
         (Int v1, Int v2) -> Bul (v1 < v2)
@@ -104,18 +104,19 @@ expr e s = case e of
 -- TYPE CHECKING
 --
 
--- Static type checking for each prog
+-- Static type checking for each cmd, returns a string if there is an error
 typeCheck :: Prog -> (Map Name Type) -> Maybe String
 typeCheck [] s = Nothing
 typeCheck (c:cs) s = case c of
     -- Variable Declaration
     (Declare ref e) -> case typeExpr e s of
-        (Just v) -> typeCheck cs (insert ref v s)
-        Nothing  -> tError e
+        (Just Fun_ty)   -> case typeFunc e of
+            (Just ty)       -> typeCheck cs (insert ref ty s)
+            Nothing         -> Just ("Error: Error in function declaration: " ++ show e)
+        (Just ty)    -> typeCheck cs (insert ref ty s)
+        Nothing     -> tError e
     -- If statement
-    -- QUESTION: Variables declared inside if statement - how to type check
-    -- TODO: Type check in if statement
-    (If e p1 p2)  -> if ((typeExpr e s) == (Just Bul_ty)) then
+    (If e p1 p2)    -> if ((typeExpr e s) == (Just Bul_ty)) then
             case (typeCheck p1 s, typeCheck p2 s) of
                 (Nothing, Nothing) -> typeCheck cs s
                 (Just s, Nothing)  -> Just s
@@ -123,61 +124,84 @@ typeCheck (c:cs) s = case c of
                 (Just s1, Just s2) -> Just (s1 ++ ", " ++ s2)
         else tError e
     -- While loop
-    (While e p)   -> if ((typeExpr e s) == (Just Bul_ty))
+    (While e p)     -> if ((typeExpr e s) == (Just Bul_ty))
         then case (typeCheck p s) of
             Nothing  -> typeCheck cs s
             (Just s) -> Just s
         else tError e
     -- Return statement
-    (Return e)      -> undefined
+    (Return e)      -> case typeExpr e s of
+        Nothing         -> tError e
+        otherwise       -> typeCheck cs s
 
--- Finds the eventual type of an expression, returns nothing if there is a type error
+-- Finds the eventual type of an expression, returns Nothing if there is a type error
 typeExpr :: Expr -> (Map Name Type) -> Maybe Type
-typeExpr (Lit v)           s = Just (typeOf v)
-typeExpr (Get ref)         s = Data.Map.lookup ref s
-typeExpr (Lt e1 e2)        s = case (typeExpr e1 s, typeExpr e2 s) of
+typeExpr (Lit v) s           = Just (typeOf v)
+typeExpr (Get ref) s         = Data.Map.lookup ref s
+typeExpr (Lt e1 e2) s        = case (typeExpr e1 s, typeExpr e2 s) of
     (Just Int_ty, Just Int_ty) -> Just Bul_ty
     (Just Dbl_ty, Just Dbl_ty) -> Just Bul_ty
     otherwise                  -> Nothing
-typeExpr (Gt e1 e2)        s = case (typeExpr e1 s, typeExpr e2 s) of
+typeExpr (Gt e1 e2) s        = case (typeExpr e1 s, typeExpr e2 s) of
     (Just Int_ty, Just Int_ty) -> Just Bul_ty
     (Just Dbl_ty, Just Dbl_ty) -> Just Bul_ty
     otherwise                  -> Nothing
-typeExpr (Eq e1 e2)        s = case (typeExpr e1 s, typeExpr e2 s) of
+typeExpr (Eq e1 e2) s        = case (typeExpr e1 s, typeExpr e2 s) of
     (Just Int_ty, Just Int_ty) -> Just Bul_ty
     (Just Dbl_ty, Just Dbl_ty) -> Just Bul_ty
     (Just Str_ty, Just Str_ty) -> Just Bul_ty
     (Just Bul_ty, Just Bul_ty) -> Just Bul_ty
     otherwise                  -> Nothing
-typeExpr (BinOp Add e1 e2)  s = case (typeExpr e1 s, typeExpr e2 s) of
+typeExpr (BinOp Add e1 e2) s = case (typeExpr e1 s, typeExpr e2 s) of
     (Just Int_ty, Just Int_ty) -> Just Int_ty
     (Just Dbl_ty, Just Dbl_ty) -> Just Dbl_ty
     (Just Int_ty, Just Dbl_ty) -> Just Dbl_ty
     (Just Dbl_ty, Just Int_ty) -> Just Dbl_ty
     (Just Str_ty, Just Str_ty) -> Just Str_ty
     otherwise                  -> Nothing
-typeExpr (BinOp Sub e1 e2)  s = case (typeExpr e1 s, typeExpr e2 s) of
+typeExpr (BinOp Sub e1 e2) s = case (typeExpr e1 s, typeExpr e2 s) of
     (Just Int_ty, Just Int_ty) -> Just Int_ty
     (Just Dbl_ty, Just Dbl_ty) -> Just Dbl_ty
     (Just Str_ty, Just Str_ty) -> Just Str_ty
     otherwise                  -> Nothing
-typeExpr (BinOp Mul e1 e2)  s = case (typeExpr e1 s, typeExpr e2 s) of
+typeExpr (BinOp Mul e1 e2) s = case (typeExpr e1 s, typeExpr e2 s) of
     (Just Int_ty, Just Int_ty) -> Just Int_ty
     (Just Dbl_ty, Just Dbl_ty) -> Just Dbl_ty
     otherwise                  -> Nothing
-typeExpr (BinOp Div e1 e2)  s = case (typeExpr e1 s, typeExpr e2 s) of
+typeExpr (BinOp Div e1 e2) s = case (typeExpr e1 s, typeExpr e2 s) of
     (Just Int_ty, Just Int_ty) -> Just Int_ty
     (Just Dbl_ty, Just Dbl_ty) -> Just Dbl_ty
     otherwise                  -> Nothing
-
---TODO
---typeExpr (Call ref es) s = typeFunction (get ref s) es s
+typeExpr (Call ref es) s     = Data.Map.lookup ref s
 
 -- | Fun Type [(Type, Name)] Prog
+-- Checks that a function returns the correct type and that its body is valid
+typeFunc :: Expr -> Maybe Type
+typeFunc (Lit (Fun reTy prms p)) = 
+    if typeCheck p s' == Nothing
+    && Just reTy == checkReturnType p s'
+    then Just reTy
+    else Nothing
+        where s' = typeParams prms empty
 
-typeFunction :: Var -> [Expr] -> State -> Maybe Type
-typeFunction (Fun reTy prms p) args s = undefined 
+-- Helper function that loads the types of each function param into a map
+-- This allows type checking against function parameters inside the body
+typeParams :: [(Type, Name)] -> (Map Name Type) -> (Map Name Type)
+typeParams [] s              = s
+typeParams ((ty, ref):tns) s = typeParams tns (insert ref ty s)
 
+-- Helper function that gets the return type of a function
+checkReturnType :: Prog -> (Map Name Type) -> Maybe Type
+checkReturnType [] s     = Nothing
+checkReturnType (c:cs) s = case c of
+    (Declare ref e) -> case typeExpr e s of
+        (Just Fun_ty)   -> case typeFunc e of
+            (Just ty)       -> checkReturnType cs (insert ref ty s)
+            Nothing         -> Nothing
+        (Just ty)       -> checkReturnType cs (insert ref ty s)
+    (Return e)      -> typeExpr e s
+    otherwise       -> checkReturnType cs s
+    
 -- Gets type of a variable
 typeOf :: Var -> Type
 typeOf (Int _)     = Int_ty
@@ -194,24 +218,25 @@ tError e = Just ("ERROR: Type error in expression: " ++ (show e))
 -- BINARY OPERATORS
 --
 
-op :: Op -> Var -> Var -> Var
+-- Function Type [(Type, Name)] Prog
+binOp :: Op -> Var -> Var -> Var
 -- Addition
-op Add (Int s1) (Int s2) = Int (s1 + s2)
-op Add (Dbl s1) (Dbl s2) = Dbl (s1 + s2)
-op Add (Int s1) (Dbl s2) = Dbl ((fromIntegral s1) + s2)
-op Add (Dbl s1) (Int s2) = Dbl (s1 + (fromIntegral s2))
-op Add (Str s1) (Str s2) = Str (s1 ++ s2)
+binOp Add (Int s1) (Int s2) = Int (s1 + s2)
+binOp Add (Dbl s1) (Dbl s2) = Dbl (s1 + s2)
+binOp Add (Int s1) (Dbl s2) = Dbl ((fromIntegral s1) + s2)
+binOp Add (Dbl s1) (Int s2) = Dbl (s1 + (fromIntegral s2))
+binOp Add (Str s1) (Str s2) = Str (s1 ++ s2)
 -- Subtraction
-op Sub (Int s1) (Int s2) = Int (s1 - s2)
-op Sub (Dbl s1) (Dbl s2) = Dbl (s1 - s2)
-op Sub (Str s1) (Str s2) = Str (strSub s1 s2)
+binOp Sub (Int s1) (Int s2) = Int (s1 - s2)
+binOp Sub (Dbl s1) (Dbl s2) = Dbl (s1 - s2)
+binOp Sub (Str s1) (Str s2) = Str (strSub s1 s2)
 -- Multiplication
-op Mul (Int s1) (Int s2) = Int (s1 * s2)
-op Mul (Dbl s1) (Dbl s2) = Dbl (s1 * s2)
+binOp Mul (Int s1) (Int s2) = Int (s1 * s2)
+binOp Mul (Dbl s1) (Dbl s2) = Dbl (s1 * s2)
 -- Division
-op Div (Int s1) (Int s2) = if s2 /= 0
+binOp Div (Int s1) (Int s2) = if s2 /= 0
     then Int (s1 `div` s2) else error "ERROR: attempt to divide by 0"
-op Div (Dbl s1) (Dbl s2) = if s2 /= 0 
+binOp Div (Dbl s1) (Dbl s2) = if s2 /= 0 
     then Dbl (s1 / s2) else error "ERROR: attempt to divide by 0"
 
 -- Subtracts a string from another string
@@ -220,7 +245,6 @@ strSub [] s2     = []
 strSub (c:cs) s2 = case s2 `isPrefixOf` (c:cs) of
     True  -> strSub (Prelude.drop (length s2) (c:cs)) s2
     False -> c:(strSub cs s2)
-
 
 --
 -- VARIABLE MANIPULATION
@@ -249,7 +273,7 @@ valBool (Bul b) = b
 --
 
 -- NOTE: loops have no inherent scope
--- A while loop of the form `while (condition) {prog}`
+-- A while loop of the form `while (condition) {body}`
 while :: Expr -> Prog -> State -> State
 while e p s = if valBool (expr e s) then while e p (driver p s) else s
 
@@ -276,12 +300,13 @@ doFunc [] s'= error "ERROR: No return statement in function body"
 -- This creates a sub-state with only the function's passed-in variables
 getParams :: [(Type, Name)] -> Params -> State -> State
 getParams (fv:fvs) (p:ps) s = case fv of
-    (_, ref) -> set ref (expr p s) empty `union` getParams fvs ps s
+    (ty, ref) -> if typeOf (expr p s) == ty 
+        then set ref (expr p s) empty `union` getParams fvs ps s
+        else error "ERROR: Invalid paramer types to function"
 getParams [] [] s       = s
 getParams [] (p:ps) s   = error "ERROR: Too many parameters passed to function"
 getParams (fv:fvs) [] s = error "ERROR: Too few parameters passed to function" 
 
--- Function Type [(Type, Name)] Prog
 
 --
 -- SYNTACTIC SUGAR
