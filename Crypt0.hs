@@ -3,19 +3,16 @@ module Crypt0 where
 import Data.Map 
 import Data.List(isPrefixOf)
 
+-- =============================================================================
+--                              ABSTRACT SYNTAX
+-- =============================================================================
+
 -- State of program is the value of all of the variables
 -- Semantic domain = State -> State = (Map Name Var) -> (Map Name Var)
-
--- TODO: Type checking
-
---
--- TYPE DECLARATIONS
---
 
 type State  = Map Name Var
 type Prog   = [Cmd]
 type Name   = String
-type Params = [Expr]
 
 -- Commands change the program's state
 data Cmd = Declare Name Expr
@@ -49,19 +46,22 @@ data Op = Add | Sub | Mul | Div
 data Type = Int_ty | Dbl_ty | Bul_ty | Str_ty | Fun_ty
     deriving (Eq,Show)
 
---
--- SEMANTICS
---
+-- =============================================================================
+--                                  SEMANTICS
+-- =============================================================================
 
+-- Type checks a program and then passes it to the driver if it is valid
 run :: Prog -> State -> (Either String State)
 run p s = case (typeCheck p empty) of
     (Just s)  -> Left s
     (Nothing) -> Right (driver p s)
 
+-- Actually handles the running of a program
 driver :: Prog -> State -> State
 driver (c:cs) s = driver cs (cmd c s)
 driver [] s = s 
 
+-- Modifies state according to commands
 cmd :: Cmd -> State -> State
 cmd command s = case command of
     -- Variable declaration
@@ -74,6 +74,7 @@ cmd command s = case command of
     -- Return (unexpected)
     Return e      -> error "Unexpected return statement"
 
+-- Performs operations and returns variables
 expr :: Expr -> State -> Var
 expr e s = case e of
     -- Addition
@@ -100,9 +101,9 @@ expr e s = case e of
     -- Get existing variable
     Get ref   -> get ref s
 
---
--- TYPE CHECKING
---
+-- =============================================================================
+--                                TYPE CHECKING
+-- =============================================================================
 
 -- Static type checking for each cmd, returns a string if there is an error
 typeCheck :: Prog -> (Map Name Type) -> Maybe String
@@ -112,7 +113,7 @@ typeCheck (c:cs) s = case c of
     (Declare ref e) -> case typeExpr e s of
         (Just Fun_ty)   -> case typeFunc e of
             (Just ty)       -> typeCheck cs (insert ref ty s)
-            Nothing         -> Just ("Error: Error in function declaration: " ++ show e)
+            Nothing         -> Just ("Error in Function Declaration: "++show e)
         (Just ty)    -> typeCheck cs (insert ref ty s)
         Nothing     -> tError e
     -- If statement
@@ -134,7 +135,8 @@ typeCheck (c:cs) s = case c of
         Nothing         -> tError e
         otherwise       -> typeCheck cs s
 
--- Finds the eventual type of an expression, returns Nothing if there is a type error
+-- Finds the eventual type of an expression
+-- Returns Nothing if there is a type error
 typeExpr :: Expr -> (Map Name Type) -> Maybe Type
 typeExpr (Lit v) s           = Just (typeOf v)
 typeExpr (Get ref) s         = Data.Map.lookup ref s
@@ -174,7 +176,6 @@ typeExpr (BinOp Div e1 e2) s = case (typeExpr e1 s, typeExpr e2 s) of
     otherwise                  -> Nothing
 typeExpr (Call ref es) s     = Data.Map.lookup ref s
 
--- | Fun Type [(Type, Name)] Prog
 -- Checks that a function returns the correct type and that its body is valid
 typeFunc :: Expr -> Maybe Type
 typeFunc (Lit (Fun reTy prms p)) = 
@@ -214,9 +215,9 @@ typeOf (Fun _ _ _) = Fun_ty
 tError :: Expr -> Maybe String
 tError e = Just ("ERROR: Type error in expression: " ++ (show e))
 
---
--- BINARY OPERATORS
---
+-- =============================================================================
+--                                BINARY OPERATORS
+-- =============================================================================
 
 -- Function Type [(Type, Name)] Prog
 binOp :: Op -> Var -> Var -> Var
@@ -246,9 +247,9 @@ strSub (c:cs) s2 = case s2 `isPrefixOf` (c:cs) of
     True  -> strSub (Prelude.drop (length s2) (c:cs)) s2
     False -> c:(strSub cs s2)
 
---
--- VARIABLE MANIPULATION
---
+-- =============================================================================
+--                            VARIABLE MANIPULATION
+-- =============================================================================
 
 -- Returns a variable by name
 get :: Name -> State -> Var 
@@ -268,22 +269,22 @@ removeVar key s = delete key s
 valBool :: Var -> Bool
 valBool (Bul b) = b
 
---
--- LOOPS
---
+-- =============================================================================
+--                                   LOOPS
+-- =============================================================================
 
 -- NOTE: loops have no inherent scope
 -- A while loop of the form `while (condition) {body}`
 while :: Expr -> Prog -> State -> State
 while e p s = if valBool (expr e s) then while e p (driver p s) else s
 
---
--- FUNCTIONS
---
+-- =============================================================================
+--                                 FUNCTIONS
+-- =============================================================================
 
 -- First create a state with the function's parameters and then run the function
 -- Our functions have static scoping and are pass by value
-call :: Name -> Params -> State -> Var
+call :: Name -> [Expr] -> State -> Var
 call ref prms s = case get ref s of
     (Fun _ fVars body) ->
         let s' = getParams fVars prms s
@@ -298,7 +299,7 @@ doFunc [] s'= error "ERROR: No return statement in function body"
 
 -- Binds the parameters passed to the function to the function's expected variables
 -- This creates a sub-state with only the function's passed-in variables
-getParams :: [(Type, Name)] -> Params -> State -> State
+getParams :: [(Type, Name)] -> [Expr] -> State -> State
 getParams (fv:fvs) (p:ps) s = case fv of
     (ty, ref) -> if typeOf (expr p s) == ty 
         then set ref (expr p s) empty `union` getParams fvs ps s
@@ -307,10 +308,9 @@ getParams [] [] s       = s
 getParams [] (p:ps) s   = error "ERROR: Too many parameters passed to function"
 getParams (fv:fvs) [] s = error "ERROR: Too few parameters passed to function" 
 
-
---
--- SYNTACTIC SUGAR
---
+-- =============================================================================
+--                              SYNTACTIC SUGAR
+-- =============================================================================
 
 -- S0 is the empty state
 s0 :: State
@@ -330,9 +330,15 @@ increment ref = Declare ref (BinOp Add (Get ref) (Lit (Int 1)))
 decrement :: Name -> Cmd
 decrement ref = Declare ref (BinOp Add (Get ref) (Lit (Int 1)))
 
---
--- TESTING
---
+-- =============================================================================
+--                         LIBRARY-LEVEL DEFINITIONS
+-- =============================================================================
+
+-- Our language does not have any library-level definitions
+
+-- =============================================================================
+--                                EXAMPLES
+-- =============================================================================
 
 addProg = run [Declare "num" (Lit (Int 23)), 
                Declare "num2" (Lit (Int 24)), 
